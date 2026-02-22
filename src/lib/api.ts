@@ -29,17 +29,22 @@ function getDevHostIp(): string | null {
 
 const DEV_HOST = getDevHostIp();
 
-// ✅ Pour WEB : on force Fly
-// ✅ Pour MOBILE : si Expo Go trouve l'IP, on garde (dev), sinon on force Fly aussi
+// ✅ Web => URLs Netlify env / prod
+// ✅ Mobile dev => IP locale (expo go) :8000
 export const BASE_URL =
   Platform.OS === "web"
     ? API_BASE_URL
     : DEV_HOST
     ? `http://${DEV_HOST}:8000`
-    : API_BASE_URL;
+    : "http://127.0.0.1:8000";
 
-// ✅ STT : web -> Fly direct ; mobile -> Fly direct aussi (car STT est séparé)
-export const STT_URL = STT_BASE_URL;
+// ✅ STT (séparé)
+export const STT_URL =
+  Platform.OS === "web"
+    ? STT_BASE_URL
+    : DEV_HOST
+    ? `http://${DEV_HOST}:8001`
+    : "http://127.0.0.1:8001";
 
 // --- utils ---
 function fetchWithTimeout(url: string, timeoutMs = 9000) {
