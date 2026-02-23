@@ -14,6 +14,7 @@ export type PharmacyItem = {
 };
 
 // --- BASE_URL backend (mobile dev vs web prod) ---
+// --- BASE_URL backend (dev local vs prod) ---
 function getDevHostIp(): string | null {
   const hostUri = (Constants.expoConfig as any)?.hostUri as string | undefined;
   if (hostUri) return hostUri.split(":")[0];
@@ -29,28 +30,25 @@ function getDevHostIp(): string | null {
 
 const DEV_HOST = getDevHostIp();
 
-// ✅ Web => URLs Netlify env / prod
-// ✅ Mobile dev => IP locale (expo go) :8000
-export const BASE_URL =
-  Platform.OS === "web"
-    ? API_BASE_URL
-    : DEV_HOST
-    ? `http://${DEV_HOST}:8000`
-    : "http://127.0.0.1:8000";
+// ✅ Toggle : si true -> on force les URLs déployées même en Expo Go
+const USE_REMOTE_SERVICES =
+  (process.env.EXPO_PUBLIC_USE_REMOTE ?? "1") === "1"; // <-- mets "0" si tu veux local
 
-// ✅ STT (séparé)
+const DEV_BASE_URL = DEV_HOST ? `http://${DEV_HOST}:8000` : "http://127.0.0.1:8000";
+const DEV_STT_URL = DEV_HOST ? `http://${DEV_HOST}:8001` : "http://127.0.0.1:8001";
+
+// ✅ PROD (Fly) dans src/config.ts
+export const BASE_URL =
+  Platform.OS === "web" ? API_BASE_URL : USE_REMOTE_SERVICES ? API_BASE_URL : DEV_BASE_URL;
+
 export const STT_URL =
-  Platform.OS === "web"
-    ? STT_BASE_URL
-    : DEV_HOST
-    ? `http://${DEV_HOST}:8001`
-    : "http://127.0.0.1:8001";
+  Platform.OS === "web" ? STT_BASE_URL : USE_REMOTE_SERVICES ? STT_BASE_URL : DEV_STT_URL;
 
 // --- utils ---
-function fetchWithTimeout(url: string, timeoutMs = 9000) {
+function fetchWithTimeout(url: string, timeoutMs = 9000, options?: RequestInit) {
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(t));
+  return fetch(url, { ...(options || {}), signal: controller.signal }).finally(() => clearTimeout(t));
 }
 
 export async function pingBackend(): Promise<boolean> {
@@ -155,7 +153,7 @@ export async function sttFromAudio(audioUri: string): Promise<{ text: string; el
     type: "audio/m4a",
   } as any);
 
-  const r = await fetch(`${STT_URL}/stt`, { method: "POST", body: form });
+  const r = await fetchWithTimeout(`${STT_URL}/stt`, 15000, { method: "POST", body: form });
 
   if (!r.ok) {
     const txt = await r.text().catch(() => "");
@@ -172,7 +170,7 @@ export async function sttFromBlob(blob: Blob): Promise<{ text: string; elapsed_s
   // ✅ web enregistre souvent en webm
   form.append("audio", blob, "speech.webm");
 
-  const r = await fetch(`${STT_URL}/stt`, { method: "POST", body: form });
+  const r = await fetchWithTimeout(`${STT_URL}/stt`, 15000, { method: "POST", body: form });
 
   if (!r.ok) {
     const txt = await r.text().catch(() => "");
