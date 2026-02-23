@@ -55,9 +55,12 @@ function fetchWithTimeout(url: string, timeoutMs = 9000, options?: RequestInit) 
 
 export async function pingBackend(): Promise<boolean> {
   try {
-    const r = await fetchWithTimeout(`${BASE_URL}/health`, 5000);
+    console.log("BASE_URL =", BASE_URL);
+    const r = await fetchWithTimeout(`${BASE_URL}/health`, 8000);
+    console.log("pingBackend status =", r.status);
     return r.ok;
-  } catch {
+  } catch (e: any) {
+    console.log("pingBackend error =", e?.name, e?.message || e);
     return false;
   }
 }
@@ -154,6 +157,8 @@ export async function sttFromAudio(audioUri: string): Promise<{ text: string; el
     name: "speech.m4a",
     type: "audio/m4a",
   } as any);
+
+  console.log("STT_URL =", STT_URL);
 
   const r = await fetchWithTimeout(`${STT_URL}/stt`, 15000, { method: "POST", body: form });
 
