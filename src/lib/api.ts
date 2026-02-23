@@ -31,13 +31,15 @@ function getDevHostIp(): string | null {
 const DEV_HOST = getDevHostIp();
 
 // ✅ Toggle : si true -> on force les URLs déployées même en Expo Go
+// ✅ Web => URLs prod
+// ✅ Mobile => par défaut prod (Fly). Local seulement si EXPO_PUBLIC_USE_REMOTE=0
+
 const USE_REMOTE_SERVICES =
-  (process.env.EXPO_PUBLIC_USE_REMOTE ?? "1") === "1"; // <-- mets "0" si tu veux local
+  (process.env.EXPO_PUBLIC_USE_REMOTE ?? "1") === "1"; // "1" = prod, "0" = local
 
 const DEV_BASE_URL = DEV_HOST ? `http://${DEV_HOST}:8000` : "http://127.0.0.1:8000";
-const DEV_STT_URL = DEV_HOST ? `http://${DEV_HOST}:8001` : "http://127.0.0.1:8001";
+const DEV_STT_URL  = DEV_HOST ? `http://${DEV_HOST}:8001` : "http://127.0.0.1:8001";
 
-// ✅ PROD (Fly) dans src/config.ts
 export const BASE_URL =
   Platform.OS === "web" ? API_BASE_URL : USE_REMOTE_SERVICES ? API_BASE_URL : DEV_BASE_URL;
 
