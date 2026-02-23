@@ -7,7 +7,6 @@ import { RootStackParamList } from "../../App";
 import { routeQuery } from "../lib/nlu";
 import { pingBackend, sttFromAudio, sttFromBlob, BASE_URL } from "../lib/api";
 
-
 type Props = NativeStackScreenProps<RootStackParamList, "Home">;
 
 /** --- UI AUDIO (mina) helper local --- */
@@ -199,12 +198,14 @@ export default function HomeScreen({ navigation }: Props) {
 
     const { intent, district } = routeQuery(text);
 
-    if (intent === "PHARMACY_ON_CALL") { await stopAllAudio();
+    if (intent === "PHARMACY_ON_CALL") {
+      await stopAllAudio();
       navigation.navigate("Results", { queryText: text, intent: "PHARMACY_ON_CALL", district });
       return;
     }
 
-    if (intent === "PHARMACY") { await stopAllAudio();
+    if (intent === "PHARMACY") {
+      await stopAllAudio();
       navigation.navigate("Results", { queryText: text, intent: "PHARMACY", district });
       return;
     }
@@ -213,111 +214,137 @@ export default function HomeScreen({ navigation }: Props) {
     setShowFallback(true);
     await playUi("fallback_pharmacies_or_retry");
 
-    if (intent === "CLINIC") { await stopAllAudio();
+    if (intent === "CLINIC") {
+      await stopAllAudio();
       navigation.navigate("Results", { queryText: text, intent: "CLINIC", district });
       return;
     }
   };
 
   const onPressMic = async () => {
-  try {
-    await stopAllAudio();
+    try {
+      await stopAllAudio();
 
-    // ✅ WEB
-    if (Platform.OS === "web") {
-      if (!webRec) {
-        setShowFallback(false);
-        setLastHeard("");
-        setStatusText("J'écoute...");
+      // ✅ WEB
+      if (Platform.OS === "web") {
+        if (!webRec) {
+          setShowFallback(false);
+          setLastHeard("");
+          setStatusText("J'écoute...");
 
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const rec = new MediaRecorder(stream);
-        const chunks: BlobPart[] = [];
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          const rec = new MediaRecorder(stream);
+          const chunks: BlobPart[] = [];
 
-        rec.ondataavailable = (e) => {
-          if (e.data && e.data.size > 0) chunks.push(e.data);
-        };
+          rec.ondataavailable = (e) => {
+            if (e.data && e.data.size > 0) chunks.push(e.data);
+          };
 
-        rec.onstop = async () => {
-          try {
-            setStatusText("Traitement...");
+          rec.onstop = async () => {
+            try {
+              setStatusText("Traitement...");
 
-            const blob = new Blob(chunks, { type: "audio/webm" });
+              const blob = new Blob(chunks, { type: "audio/webm" });
 
-            const ok = await pingBackend();
-            if (!ok) {
-              setStatusText("Backend indisponible");
+              const ok = await pingBackend();
+              if (!ok) {
+                setStatusText("Backend indisponible");
+                await playUi("repeat_please");
+                return;
+              }
+
+              const { text } = await sttFromBlob(blob);
+
+              if (!text || text.trim().length < 2) {
+                setStatusText("Répétez");
+                await playUi("repeat_please");
+                return;
+              }
+
+              setLastHeard(text);
+              setStatusText(`Reconnu: ${text}`);
+
+              const { intent, district } = routeQuery(text);
+
+              if (intent === "PHARMACY_ON_CALL") {
+                await stopAllAudio();
+                navigation.navigate("Results", {
+                  queryText: text,
+                  intent: "PHARMACY_ON_CALL",
+                  district,
+                });
+                return;
+              }
+
+              if (intent === "PHARMACY") {
+                await stopAllAudio();
+                navigation.navigate("Results", { queryText: text, intent: "PHARMACY", district });
+                return;
+              }
+
+              if (intent === "CLINIC") {
+                await stopAllAudio();
+                navigation.navigate("Results", { queryText: text, intent: "CLINIC", district });
+                return;
+              }
+
+              setShowFallback(true);
+              await playUi("fallback_pharmacies_or_retry");
+            } catch (e: any) {
+              // ✅ CORRECTION 1/4 (WEB/HomeScreen): message d'erreur propre
+              console.error("STT/WEB error:", e?.message || e);
+
+              const msg =
+                e?.name === "AbortError"
+                  ? "Le serveur met trop de temps (timeout)"
+                  : String(e?.message || "").includes("STT error")
+                  ? "Erreur de reconnaissance vocale"
+                  : "Problème de connexion / serveur";
+
+              setStatusText(msg);
               await playUi("repeat_please");
-              return;
+            } finally {
+              setWebRec(null);
+              setWebChunks([]);
             }
+          };
 
-            const { text } = await sttFromBlob(blob);
-
-            if (!text || text.trim().length < 2) {
-              setStatusText("Répétez");
-              await playUi("repeat_please");
-              return;
-            }
-
-            setLastHeard(text);
-            setStatusText(`Reconnu: ${text}`);
-
-            const { intent, district } = routeQuery(text);
-
-            if (intent === "PHARMACY_ON_CALL") {
-              await stopAllAudio();
-              navigation.navigate("Results", { queryText: text, intent: "PHARMACY_ON_CALL", district });
-              return;
-            }
-
-            if (intent === "PHARMACY") {
-              await stopAllAudio();
-              navigation.navigate("Results", { queryText: text, intent: "PHARMACY", district });
-              return;
-            }
-
-            if (intent === "CLINIC") {
-              await stopAllAudio();
-              navigation.navigate("Results", { queryText: text, intent: "CLINIC", district });
-              return;
-            }
-
-            setShowFallback(true);
-            await playUi("fallback_pharmacies_or_retry");
-          } catch {
-            setStatusText("Erreur micro");
-            await playUi("repeat_please");
-          } finally {
-            setWebRec(null);
-            setWebChunks([]);
-          }
-        };
-
-        rec.start();
-        setWebChunks(chunks);
-        setWebRec(rec);
-        return;
-      } else {
-        // stop web recorder
-        setStatusText("Traitement...");
-        webRec.stop();
-        setWebRec(null);
-        return;
+          rec.start();
+          setWebChunks(chunks);
+          setWebRec(rec);
+          return;
+        } else {
+          // stop web recorder
+          setStatusText("Traitement...");
+          webRec.stop();
+          setWebRec(null);
+          return;
+        }
       }
-    }
 
-    // ✅ MOBILE (ton code existant)
-    if (recording) {
-      await stopRecordingAndProcess(recording);
-    } else {
-      await startRecording();
+      // ✅ MOBILE (ton code existant)
+      if (recording) {
+        await stopRecordingAndProcess(recording);
+      } else {
+        await startRecording();
+      }
+    } catch (e: any) {
+      // ✅ CORRECTION 2/4 (MOBILE/HomeScreen): ne plus afficher "Erreur micro" pour tout
+      console.error("MIC flow error:", e?.message || e);
+      setRecording(null);
+
+      const msg =
+        String(e?.message || "").toLowerCase().includes("permission")
+          ? "Autorisation micro refusée"
+          : String(e?.message || "").toLowerCase().includes("network") ||
+            String(e?.message || "").toLowerCase().includes("fetch")
+          ? "Problème de connexion / serveur"
+          : "Erreur pendant l’enregistrement";
+
+      setStatusText(msg);
+      await playUi("repeat_please");
     }
-  } catch {
-    setRecording(null);
-    setStatusText("Erreur micro");
-    await playUi("repeat_please");
-  }
-};
+  };
 
   const goPharmacies = () => {
     navigation.navigate("Results", {
