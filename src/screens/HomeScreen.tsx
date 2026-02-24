@@ -5,7 +5,7 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import { RootStackParamList } from "../../App";
 import { routeQuery } from "../lib/nlu";
-import { pingBackend, sttFromAudio, sttFromBlob, BASE_URL, STT_URL } from "../lib/api";
+import { pingBackend, pingStt, sttFromAudio, sttFromBlob, BASE_URL, STT_URL } from "../lib/api";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Home">;
 
@@ -32,7 +32,6 @@ async function playUi(key: string, lang: string = "mina") {
   const seq = ++playSeq; // ✅ ce playUi devient "le dernier"
 
   try {
-    // ✅ coupe tout avant de relancer un audio UI
     await stopAllAudio();
 
     const r = await fetch(
@@ -44,10 +43,8 @@ async function playUi(key: string, lang: string = "mina") {
     const url = data.url as string;
     if (!url) return;
 
-    // ✅ si entre temps un autre playUi a été lancé, on annule celui-ci
     if (seq !== playSeq) return;
 
-    // ✅ force mode lecture
     await Audio.setAudioModeAsync({
       allowsRecordingIOS: false,
       playsInSilentModeIOS: true,
@@ -56,7 +53,6 @@ async function playUi(key: string, lang: string = "mina") {
 
     const { sound } = await Audio.Sound.createAsync({ uri: url }, { shouldPlay: true });
 
-    // ✅ si un autre playUi a été lancé pendant le chargement -> stop immédiat
     if (seq !== playSeq) {
       try {
         await sound.stopAsync();
@@ -92,7 +88,6 @@ export default function HomeScreen({ navigation }: Props) {
   const [webRec, setWebRec] = useState<MediaRecorder | null>(null);
   const [webChunks, setWebChunks] = useState<BlobPart[]>([]);
 
-  // ✅ FIX Android/Expo : repasser en mode lecture au démarrage
   useEffect(() => {
     (async () => {
       try {
@@ -105,7 +100,6 @@ export default function HomeScreen({ navigation }: Props) {
     })();
   }, []);
 
-  // 🔊 Welcome Mina
   useEffect(() => {
     playUi("welcome");
     return () => {
@@ -114,57 +108,58 @@ export default function HomeScreen({ navigation }: Props) {
   }, []);
 
   const startRecording = async () => {
-  try {
-    setShowFallback(false);
-    setLastHeard("");
-    setStatusText("J'écoute...");
+    try {
+      setShowFallback(false);
+      setLastHeard("");
+      setStatusText("J'écoute...");
 
-    const perm = await Audio.requestPermissionsAsync();
-    if (!perm.granted) {
-      setStatusText("Permission micro refusée.");
+      const perm = await Audio.requestPermissionsAsync();
+      if (!perm.granted) {
+        setStatusText("Permission micro refusée.");
+        await playUi("repeat_please");
+        return;
+      }
+
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+      });
+
+      const rec = new Audio.Recording();
+      await rec.prepareToRecordAsync({
+        android: {
+          extension: ".m4a",
+          outputFormat: Audio.AndroidOutputFormat.MPEG_4,
+          audioEncoder: Audio.AndroidAudioEncoder.AAC,
+          sampleRate: 16000,
+          numberOfChannels: 1,
+          bitRate: 24000,
+        },
+        ios: {
+          extension: ".m4a",
+          audioQuality: Audio.IOSAudioQuality.LOW,
+          sampleRate: 16000,
+          numberOfChannels: 1,
+          bitRate: 24000,
+          linearPCMBitDepth: 16,
+          linearPCMIsBigEndian: false,
+          linearPCMIsFloat: false,
+        },
+      } as any);
+
+      await rec.startAsync();
+      setRecording(rec);
+      console.log("recording started");
+      setStatusText("J'écoute...");
+    } catch (e: any) {
+      console.log("startRecording error =", e?.name, e?.message || e);
+      setRecording(null);
+      setStatusText("Erreur enregistrement micro");
       await playUi("repeat_please");
-      return;
     }
+  };
 
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: true,
-      playsInSilentModeIOS: true,
-      shouldDuckAndroid: true,
-    });
-
-    const rec = new Audio.Recording();
-    await rec.prepareToRecordAsync({
-      android: {
-        extension: ".m4a",
-        outputFormat: Audio.AndroidOutputFormat.MPEG_4,
-        audioEncoder: Audio.AndroidAudioEncoder.AAC,
-        sampleRate: 16000,
-        numberOfChannels: 1,
-        bitRate: 24000,
-      },
-      ios: {
-        extension: ".m4a",
-        audioQuality: Audio.IOSAudioQuality.LOW,
-        sampleRate: 16000,
-        numberOfChannels: 1,
-        bitRate: 24000,
-        linearPCMBitDepth: 16,
-        linearPCMIsBigEndian: false,
-        linearPCMIsFloat: false,
-      },
-    } as any);
-
-    await rec.startAsync();
-    setRecording(rec);
-    console.log("recording started");
-    setStatusText("J'écoute...");
-  } catch (e: any) {
-    console.log("startRecording error =", e?.name, e?.message || e);
-    setRecording(null);
-    setStatusText("Erreur enregistrement micro");
-    await playUi("repeat_please");
-  }
-};
   const stopRecordingAndProcess = async (rec: Audio.Recording) => {
     setStatusText("Traitement...");
     await rec.stopAndUnloadAsync();
@@ -187,14 +182,25 @@ export default function HomeScreen({ navigation }: Props) {
       return;
     }
 
-    const ok = await pingBackend();
-    if (!ok) {
+    // ✅ PRE-WARM (Fly cold start)
+    setStatusText("Réveil serveur…");
+    const okApi = await pingBackend();
+    const okStt = await pingStt();
+
+    if (!okApi) {
       setStatusText("Backend indisponible");
       await playUi("repeat_please");
       return;
     }
+    if (!okStt) {
+      setStatusText("Assistance vocale indisponible");
+      await playUi("repeat_please");
+      return;
+    }
 
+    setStatusText("Reconnaissance…");
     const { text } = await sttFromAudio(uri);
+
     if (!text || text.trim().length < 2) {
       setStatusText("Répétez");
       await playUi("repeat_please");
@@ -218,7 +224,6 @@ export default function HomeScreen({ navigation }: Props) {
       return;
     }
 
-    // ✅ fallback: ne bloque pas
     setShowFallback(true);
     await playUi("fallback_pharmacies_or_retry");
 
@@ -254,13 +259,22 @@ export default function HomeScreen({ navigation }: Props) {
 
               const blob = new Blob(chunks, { type: "audio/webm" });
 
-              const ok = await pingBackend();
-              if (!ok) {
+              setStatusText("Réveil serveur…");
+              const okApi = await pingBackend();
+              const okStt = await pingStt();
+
+              if (!okApi) {
                 setStatusText("Backend indisponible");
                 await playUi("repeat_please");
                 return;
               }
+              if (!okStt) {
+                setStatusText("Assistance vocale indisponible");
+                await playUi("repeat_please");
+                return;
+              }
 
+              setStatusText("Reconnaissance…");
               const { text } = await sttFromBlob(blob);
 
               if (!text || text.trim().length < 2) {
@@ -299,7 +313,6 @@ export default function HomeScreen({ navigation }: Props) {
               setShowFallback(true);
               await playUi("fallback_pharmacies_or_retry");
             } catch (e: any) {
-              // ✅ CORRECTION 1/4 (WEB/HomeScreen): message d'erreur propre
               console.error("STT/WEB error:", e?.message || e);
 
               const msg =
@@ -322,7 +335,6 @@ export default function HomeScreen({ navigation }: Props) {
           setWebRec(rec);
           return;
         } else {
-          // stop web recorder
           setStatusText("Traitement...");
           webRec.stop();
           setWebRec(null);
@@ -330,30 +342,29 @@ export default function HomeScreen({ navigation }: Props) {
         }
       }
 
-      // ✅ MOBILE (ton code existant)
+      // ✅ MOBILE
       if (recording) {
         await stopRecordingAndProcess(recording);
       } else {
         await startRecording();
       }
     } catch (e: any) {
-      // ✅ CORRECTION 2/4 (MOBILE/HomeScreen): ne plus afficher "Erreur micro" pour tout
       console.error("MIC flow error:", e?.message || e);
       setRecording(null);
 
       const msgRaw = String(e?.message || "");
 
-const msg =
-  msgRaw.startsWith("STT error")
-    ? "Erreur de reconnaissance vocale (STT)"
-    : msgRaw.toLowerCase().includes("permission")
-    ? "Autorisation micro refusée"
-    : msgRaw.toLowerCase().includes("network") ||
-      msgRaw.toLowerCase().includes("fetch") ||
-      msgRaw.toLowerCase().includes("timeout") ||
-      e?.name === "AbortError"
-    ? "Problème de connexion / serveur"
-    : "Erreur pendant l’enregistrement";
+      const msg =
+        msgRaw.startsWith("STT error")
+          ? "Erreur de reconnaissance vocale (STT)"
+          : msgRaw.toLowerCase().includes("permission")
+          ? "Autorisation micro refusée"
+          : msgRaw.toLowerCase().includes("network") ||
+            msgRaw.toLowerCase().includes("fetch") ||
+            msgRaw.toLowerCase().includes("timeout") ||
+            e?.name === "AbortError"
+          ? "Problème de connexion / serveur"
+          : "Erreur pendant l’enregistrement";
 
       setStatusText(msg);
       await playUi("repeat_please");

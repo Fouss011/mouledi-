@@ -13,6 +13,7 @@ import {
   sttFromAudio,
   sttFromBlob,
   pingBackend,
+  pingStt,
   BASE_URL,
 } from "../lib/api";
 import { routeQuery } from "../lib/nlu";
@@ -44,7 +45,6 @@ async function playUi(key: string, lang: string = "mina") {
   const seq = ++playSeq; // ✅ ce playUi devient "le dernier"
 
   try {
-    // ✅ coupe tout avant de relancer un audio UI
     await stopAllAudio();
 
     const r = await fetch(
@@ -56,10 +56,8 @@ async function playUi(key: string, lang: string = "mina") {
     const url = data.url as string;
     if (!url) return;
 
-    // ✅ si entre temps un autre playUi a été lancé, on annule celui-ci
     if (seq !== playSeq) return;
 
-    // ✅ force mode lecture
     await Audio.setAudioModeAsync({
       allowsRecordingIOS: false,
       playsInSilentModeIOS: true,
@@ -68,7 +66,6 @@ async function playUi(key: string, lang: string = "mina") {
 
     const { sound } = await Audio.Sound.createAsync({ uri: url }, { shouldPlay: true });
 
-    // ✅ si un autre playUi a été lancé pendant le chargement -> stop immédiat
     if (seq !== playSeq) {
       try {
         await sound.stopAsync();
@@ -100,7 +97,6 @@ export default function ResultsScreen({ navigation, route }: Props) {
 
   const [webRec, setWebRec] = useState<MediaRecorder | null>(null);
 
-  // ✅ FIX Android/Expo : repasser en mode lecture au démarrage
   useEffect(() => {
     (async () => {
       try {
@@ -125,38 +121,24 @@ export default function ResultsScreen({ navigation, route }: Props) {
     const modeFinal = mode ?? "all";
     let res: PharmacyItem[] = [];
 
-    // --- PHARMACIES DE GARDE ---
     if (modeFinal === "oncall") {
       res = await searchPharmaciesOnCall(d, lat, lng);
-
-      // ✅ fallback autorisé UNIQUEMENT ici (garde → pharmacies normales)
-      if (res.length === 0) {
-        res = await searchPharmacies(d, lat, lng);
-      }
-    }
-
-    // --- CLINIQUES ---
-    else if (modeFinal === "clinic") {
+      if (res.length === 0) res = await searchPharmacies(d, lat, lng);
+    } else if (modeFinal === "clinic") {
       res = await searchClinics(d, lat, lng);
-
-      // ✅ si aucune clinique → message vocal, PAS de liste surprise
       if (res.length === 0) {
         setItems([]);
         setLoading(false);
         await playUi("fallback_pharmacies_or_retry");
         return;
       }
-    }
-
-    // --- PHARMACIES NORMALES ---
-    else {
+    } else {
       res = await searchPharmacies(d, lat, lng);
     }
 
     setItems(res);
     setLoading(false);
 
-    // ✅ instruction claire au lieu d'annoncer un nombre
     if (res.length > 0) {
       await playUi("tap_item_to_listen");
     }
@@ -193,7 +175,6 @@ export default function ResultsScreen({ navigation, route }: Props) {
   };
 
   const speakNameOnly = async (name: string) => {
-    // ✅ coupe l'ancien son (UI audio ou TTS) et lit juste le nom
     await stopAllAudio();
     Speech.speak(name, { language: "fr-FR", rate: 0.95 });
   };
@@ -282,13 +263,23 @@ export default function ResultsScreen({ navigation, route }: Props) {
       return;
     }
 
-    const ok = await pingBackend();
-    if (!ok) {
+    // ✅ PRE-WARM
+    setStatusText("Réveil serveur…");
+    const okApi = await pingBackend();
+    const okStt = await pingStt();
+
+    if (!okApi) {
       setStatusText("Backend indisponible");
       await playUi("repeat_please");
       return;
     }
+    if (!okStt) {
+      setStatusText("Assistance vocale indisponible");
+      await playUi("repeat_please");
+      return;
+    }
 
+    setStatusText("Reconnaissance…");
     const { text } = await sttFromAudio(uri);
 
     if (tryHandleVoiceCommand(text)) {
@@ -316,7 +307,6 @@ export default function ResultsScreen({ navigation, route }: Props) {
       return;
     }
 
-    // ✅ au lieu de bloquer l'utilisateur
     await playUi("fallback_pharmacies_or_retry");
     await loadData(null, nearLat, nearLng, "all");
   };
@@ -343,13 +333,22 @@ export default function ResultsScreen({ navigation, route }: Props) {
               setStatusText("Traitement...");
               const blob = new Blob(chunks, { type: "audio/webm" });
 
-              const ok = await pingBackend();
-              if (!ok) {
+              setStatusText("Réveil serveur…");
+              const okApi = await pingBackend();
+              const okStt = await pingStt();
+
+              if (!okApi) {
                 setStatusText("Backend indisponible");
                 await playUi("repeat_please");
                 return;
               }
+              if (!okStt) {
+                setStatusText("Assistance vocale indisponible");
+                await playUi("repeat_please");
+                return;
+              }
 
+              setStatusText("Reconnaissance…");
               const { text } = await sttFromBlob(blob);
 
               if (tryHandleVoiceCommand(text)) {
@@ -385,22 +384,20 @@ export default function ResultsScreen({ navigation, route }: Props) {
               await playUi("fallback_pharmacies_or_retry");
               await loadData(null, nearLat, nearLng, "all");
             } catch (e: any) {
-              // ✅ CORRECTION 3/4 (WEB/ResultsScreen): message d'erreur propre
               console.error("STT/WEB error:", e?.message || e);
 
               const msgRaw = String(e?.message || "");
-
-const msg =
-  msgRaw.startsWith("STT error")
-    ? "Erreur de reconnaissance vocale (STT)"
-    : msgRaw.toLowerCase().includes("permission")
-    ? "Autorisation micro refusée"
-    : msgRaw.toLowerCase().includes("network") ||
-      msgRaw.toLowerCase().includes("fetch") ||
-      msgRaw.toLowerCase().includes("timeout") ||
-      e?.name === "AbortError"
-    ? "Problème de connexion / serveur"
-    : "Erreur pendant l’enregistrement";
+              const msg =
+                msgRaw.startsWith("STT error")
+                  ? "Erreur de reconnaissance vocale (STT)"
+                  : msgRaw.toLowerCase().includes("permission")
+                  ? "Autorisation micro refusée"
+                  : msgRaw.toLowerCase().includes("network") ||
+                    msgRaw.toLowerCase().includes("fetch") ||
+                    msgRaw.toLowerCase().includes("timeout") ||
+                    e?.name === "AbortError"
+                  ? "Problème de connexion / serveur"
+                  : "Erreur pendant l’enregistrement";
 
               setStatusText(msg);
               await playUi("repeat_please");
@@ -427,7 +424,6 @@ const msg =
         await startRecording();
       }
     } catch (e: any) {
-      // ✅ CORRECTION 4/4 (MOBILE/ResultsScreen): ne plus afficher "Erreur micro" pour tout
       console.error("MIC flow error:", e?.message || e);
       setRecording(null);
 
@@ -435,7 +431,9 @@ const msg =
         String(e?.message || "").toLowerCase().includes("permission")
           ? "Autorisation micro refusée"
           : String(e?.message || "").toLowerCase().includes("network") ||
-            String(e?.message || "").toLowerCase().includes("fetch")
+            String(e?.message || "").toLowerCase().includes("fetch") ||
+            String(e?.message || "").toLowerCase().includes("timeout") ||
+            e?.name === "AbortError"
           ? "Problème de connexion / serveur"
           : "Erreur pendant l’enregistrement";
 
@@ -491,7 +489,8 @@ const msg =
           keyExtractor={(it, idx) => `${it.provider_id ?? it.name}-${idx}`}
           contentContainerStyle={{ paddingBottom: 30 }}
           renderItem={({ item }) => {
-            const distanceLine = (item as any).distance_km != null ? ` • ${(item as any).distance_km} km` : "";
+            const distanceLine =
+              (item as any).distance_km != null ? ` • ${(item as any).distance_km} km` : "";
 
             return (
               <Pressable onPress={() => speakNameOnly(item.name)} style={styles.card}>

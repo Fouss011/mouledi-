@@ -13,7 +13,6 @@ export type PharmacyItem = {
   is_on_call_now?: boolean;
 };
 
-// --- BASE_URL backend (mobile dev vs web prod) ---
 // --- BASE_URL backend (dev local vs prod) ---
 function getDevHostIp(): string | null {
   const hostUri = (Constants.expoConfig as any)?.hostUri as string | undefined;
@@ -31,13 +30,10 @@ function getDevHostIp(): string | null {
 const DEV_HOST = getDevHostIp();
 
 // ✅ Toggle : si true -> on force les URLs déployées même en Expo Go
-// ✅ Web => URLs prod
-// ✅ Mobile => par défaut prod (Fly). Local seulement si EXPO_PUBLIC_USE_REMOTE=0
-
-const USE_REMOTE_SERVICES = true; // ✅ force Fly sur mobile 
+const USE_REMOTE_SERVICES = true; // ✅ force Fly sur mobile
 
 const DEV_BASE_URL = DEV_HOST ? `http://${DEV_HOST}:8000` : "http://127.0.0.1:8000";
-const DEV_STT_URL  = DEV_HOST ? `http://${DEV_HOST}:8001` : "http://127.0.0.1:8001";
+const DEV_STT_URL = DEV_HOST ? `http://${DEV_HOST}:8001` : "http://127.0.0.1:8001";
 
 export const BASE_URL =
   Platform.OS === "web" ? API_BASE_URL : USE_REMOTE_SERVICES ? API_BASE_URL : DEV_BASE_URL;
@@ -45,17 +41,51 @@ export const BASE_URL =
 export const STT_URL =
   Platform.OS === "web" ? STT_BASE_URL : USE_REMOTE_SERVICES ? STT_BASE_URL : DEV_STT_URL;
 
-// --- utils ---
-function fetchWithTimeout(url: string, timeoutMs = 9000, options?: RequestInit) {
+// ----------------------
+// Helpers: timeout + retry
+// ----------------------
+async function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function fetchWithTimeout(url: string, timeoutMs = 15000, options?: RequestInit) {
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), timeoutMs);
+
   return fetch(url, { ...(options || {}), signal: controller.signal }).finally(() => clearTimeout(t));
 }
 
+async function retryFetch(
+  url: string,
+  options: RequestInit = {},
+  cfg: { retries?: number; timeoutMs?: number; backoffMs?: number } = {}
+) {
+  const retries = cfg.retries ?? 3;
+  const timeoutMs = cfg.timeoutMs ?? 25000;
+  const backoffMs = cfg.backoffMs ?? 900;
+
+  let lastErr: any = null;
+
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const res = await fetchWithTimeout(url, timeoutMs, options);
+      return res;
+    } catch (e) {
+      lastErr = e;
+      await sleep(backoffMs * attempt);
+    }
+  }
+
+  throw lastErr;
+}
+
+// ----------------------
+// Health checks
+// ----------------------
 export async function pingBackend(): Promise<boolean> {
   try {
     console.log("BASE_URL =", BASE_URL);
-    const r = await fetchWithTimeout(`${BASE_URL}/health`, 8000);
+    const r = await retryFetch(`${BASE_URL}/health`, { method: "GET" }, { retries: 3, timeoutMs: 25000 });
     console.log("pingBackend status =", r.status);
     return r.ok;
   } catch (e: any) {
@@ -64,6 +94,21 @@ export async function pingBackend(): Promise<boolean> {
   }
 }
 
+export async function pingStt(): Promise<boolean> {
+  try {
+    console.log("STT_URL =", STT_URL);
+    const r = await retryFetch(`${STT_URL}/health`, { method: "GET" }, { retries: 3, timeoutMs: 25000 });
+    console.log("pingStt status =", r.status);
+    return r.ok;
+  } catch (e: any) {
+    console.log("pingStt error =", e?.name, e?.message || e);
+    return false;
+  }
+}
+
+// ----------------------
+// Providers API
+// ----------------------
 function buildProvidersUrl(opts: {
   type: "pharmacy" | "clinic";
   district?: string | null;
@@ -89,7 +134,8 @@ function buildProvidersUrl(opts: {
 }
 
 async function fetchProviders(url: string): Promise<PharmacyItem[]> {
-  const r = await fetchWithTimeout(url, 9000);
+  // Fly cold start: retry + timeout plus long
+  const r = await retryFetch(url, { method: "GET" }, { retries: 3, timeoutMs: 25000 });
   if (!r.ok) {
     const txt = await r.text().catch(() => "");
     throw new Error(`API error ${r.status}: ${txt}`);
@@ -159,16 +205,18 @@ export async function sttFromAudio(audioUri: string): Promise<{ text: string; el
 
   console.log("STT_URL =", STT_URL);
 
-  const r = await fetchWithTimeout(`${STT_URL}/stt`, 15000, { method: "POST", body: form });
-  if (!r.ok) {
-    const t = await r.text().catch(() => "");
-    throw new Error(`STT error ${r.status}: ${t}`);
-  }
+  // ✅ STT peut être long (cold start + whisper)
+  const r = await retryFetch(
+    `${STT_URL}/stt`,
+    { method: "POST", body: form },
+    { retries: 2, timeoutMs: 60000, backoffMs: 1200 }
+  );
 
   if (!r.ok) {
     const txt = await r.text().catch(() => "");
     throw new Error(`STT error ${r.status}: ${txt}`);
   }
+
   return await r.json();
 }
 
@@ -180,15 +228,16 @@ export async function sttFromBlob(blob: Blob): Promise<{ text: string; elapsed_s
   // ✅ web enregistre souvent en webm
   form.append("audio", blob, "speech.webm");
 
-  const r = await fetchWithTimeout(`${STT_URL}/stt`, 15000, { method: "POST", body: form });
-  if (!r.ok) {
-    const t = await r.text().catch(() => "");
-    throw new Error(`STT error ${r.status}: ${t}`);
-  }
+  const r = await retryFetch(
+    `${STT_URL}/stt`,
+    { method: "POST", body: form },
+    { retries: 2, timeoutMs: 60000, backoffMs: 1200 }
+  );
 
   if (!r.ok) {
     const txt = await r.text().catch(() => "");
     throw new Error(`STT error ${r.status}: ${txt}`);
   }
+
   return await r.json();
 }
