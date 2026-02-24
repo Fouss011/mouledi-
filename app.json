@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "miabe-voice",
+    "name": "MOULÉDI",
     "slug": "miabe-voice",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -10,20 +10,29 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#000000"
     },
     "ios": {
       "supportsTablet": true
     },
     "android": {
+      "package": "com.mouledi.voice",
+      "permissions": [
+        "RECORD_AUDIO"
+      ],
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "248bee44-e2d1-4ab1-b75c-813d7a18b115"
+      }
     }
   }
 }
