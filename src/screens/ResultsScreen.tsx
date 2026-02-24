@@ -388,12 +388,19 @@ export default function ResultsScreen({ navigation, route }: Props) {
               // ✅ CORRECTION 3/4 (WEB/ResultsScreen): message d'erreur propre
               console.error("STT/WEB error:", e?.message || e);
 
-              const msg =
-                e?.name === "AbortError"
-                  ? "Le serveur met trop de temps (timeout)"
-                  : String(e?.message || "").includes("STT error")
-                  ? "Erreur de reconnaissance vocale"
-                  : "Problème de connexion / serveur";
+              const msgRaw = String(e?.message || "");
+
+const msg =
+  msgRaw.startsWith("STT error")
+    ? "Erreur de reconnaissance vocale (STT)"
+    : msgRaw.toLowerCase().includes("permission")
+    ? "Autorisation micro refusée"
+    : msgRaw.toLowerCase().includes("network") ||
+      msgRaw.toLowerCase().includes("fetch") ||
+      msgRaw.toLowerCase().includes("timeout") ||
+      e?.name === "AbortError"
+    ? "Problème de connexion / serveur"
+    : "Erreur pendant l’enregistrement";
 
               setStatusText(msg);
               await playUi("repeat_please");

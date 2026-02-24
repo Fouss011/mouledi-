@@ -341,13 +341,19 @@ export default function HomeScreen({ navigation }: Props) {
       console.error("MIC flow error:", e?.message || e);
       setRecording(null);
 
-      const msg =
-        String(e?.message || "").toLowerCase().includes("permission")
-          ? "Autorisation micro refusée"
-          : String(e?.message || "").toLowerCase().includes("network") ||
-            String(e?.message || "").toLowerCase().includes("fetch")
-          ? "Problème de connexion / serveur"
-          : "Erreur pendant l’enregistrement";
+      const msgRaw = String(e?.message || "");
+
+const msg =
+  msgRaw.startsWith("STT error")
+    ? "Erreur de reconnaissance vocale (STT)"
+    : msgRaw.toLowerCase().includes("permission")
+    ? "Autorisation micro refusée"
+    : msgRaw.toLowerCase().includes("network") ||
+      msgRaw.toLowerCase().includes("fetch") ||
+      msgRaw.toLowerCase().includes("timeout") ||
+      e?.name === "AbortError"
+    ? "Problème de connexion / serveur"
+    : "Erreur pendant l’enregistrement";
 
       setStatusText(msg);
       await playUi("repeat_please");
