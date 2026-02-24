@@ -160,6 +160,10 @@ export async function sttFromAudio(audioUri: string): Promise<{ text: string; el
   console.log("STT_URL =", STT_URL);
 
   const r = await fetchWithTimeout(`${STT_URL}/stt`, 15000, { method: "POST", body: form });
+  if (!r.ok) {
+    const t = await r.text().catch(() => "");
+    throw new Error(`STT error ${r.status}: ${t}`);
+  }
 
   if (!r.ok) {
     const txt = await r.text().catch(() => "");
@@ -177,6 +181,10 @@ export async function sttFromBlob(blob: Blob): Promise<{ text: string; elapsed_s
   form.append("audio", blob, "speech.webm");
 
   const r = await fetchWithTimeout(`${STT_URL}/stt`, 15000, { method: "POST", body: form });
+  if (!r.ok) {
+    const t = await r.text().catch(() => "");
+    throw new Error(`STT error ${r.status}: ${t}`);
+  }
 
   if (!r.ok) {
     const txt = await r.text().catch(() => "");
