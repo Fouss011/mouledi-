@@ -5,7 +5,7 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import { RootStackParamList } from "../../App";
 import { routeQuery } from "../lib/nlu";
-import { pingBackend, sttFromAudio, sttFromBlob, BASE_URL } from "../lib/api";
+import { pingBackend, sttFromAudio, sttFromBlob, BASE_URL, STT_URL } from "../lib/api";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Home">;
 
@@ -114,6 +114,7 @@ export default function HomeScreen({ navigation }: Props) {
   }, []);
 
   const startRecording = async () => {
+  try {
     setShowFallback(false);
     setLastHeard("");
     setStatusText("J'écoute...");
@@ -155,8 +156,15 @@ export default function HomeScreen({ navigation }: Props) {
 
     await rec.startAsync();
     setRecording(rec);
-  };
-
+    console.log("recording started");
+    setStatusText("J'écoute...");
+  } catch (e: any) {
+    console.log("startRecording error =", e?.name, e?.message || e);
+    setRecording(null);
+    setStatusText("Erreur enregistrement micro");
+    await playUi("repeat_please");
+  }
+};
   const stopRecordingAndProcess = async (rec: Audio.Recording) => {
     setStatusText("Traitement...");
     await rec.stopAndUnloadAsync();
@@ -377,6 +385,7 @@ export default function HomeScreen({ navigation }: Props) {
       <Text style={styles.title}>MOULÉDI</Text>
       <Text style={styles.subtitle}>Toucher → Parler → Écouter → Agir</Text>
       <Text style={{ color: "#444", fontSize: 11, marginTop: 6 }}>API: {BASE_URL}</Text>
+      <Text style={{ color: "#444", fontSize: 11, marginTop: 6 }}>STT: {STT_URL}</Text>
 
       <View style={styles.center}>
         <Pressable style={[styles.micButton, recording ? styles.micActive : null]} onPress={onPressMic}>
