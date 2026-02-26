@@ -224,14 +224,15 @@ export default function HomeScreen({ navigation }: Props) {
       return;
     }
 
-    setShowFallback(true);
-    await playUi("fallback_pharmacies_or_retry");
-
+    // ✅ IMPORTANT: gérer CLINIC AVANT fallback
     if (intent === "CLINIC") {
       await stopAllAudio();
       navigation.navigate("Results", { queryText: text, intent: "CLINIC", district });
       return;
     }
+
+    setShowFallback(true);
+    await playUi("fallback_pharmacies_or_retry");
   };
 
   const onPressMic = async () => {
@@ -304,6 +305,7 @@ export default function HomeScreen({ navigation }: Props) {
                 return;
               }
 
+              // ✅ IMPORTANT: gérer CLINIC AVANT fallback
               if (intent === "CLINIC") {
                 await stopAllAudio();
                 navigation.navigate("Results", { queryText: text, intent: "CLINIC", district });
@@ -390,6 +392,12 @@ export default function HomeScreen({ navigation }: Props) {
 
     if (intent === "PHARMACY") {
       navigation.navigate("Results", { queryText: typed, intent: "PHARMACY", district });
+      return;
+    }
+
+    // ✅ debug: gérer CLINIC aussi
+    if (intent === "CLINIC") {
+      navigation.navigate("Results", { queryText: typed, intent: "CLINIC", district });
       return;
     }
 

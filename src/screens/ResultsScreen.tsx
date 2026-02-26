@@ -307,6 +307,12 @@ export default function ResultsScreen({ navigation, route }: Props) {
       return;
     }
 
+    // ✅ FIX: gérer CLINIC aussi (manquait sur mobile)
+    if (newIntent === "CLINIC") {
+      await loadData(newDistrict, nearLat, nearLng, "clinic");
+      return;
+    }
+
     await playUi("fallback_pharmacies_or_retry");
     await loadData(null, nearLat, nearLng, "all");
   };
