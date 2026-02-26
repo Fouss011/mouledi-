@@ -117,27 +117,26 @@ function buildProvidersUrl(opts: {
   district?: string | null;
   onCallNow?: boolean;
   limit?: number;
-  nearLat?: number | null;
-  nearLng?: number | null;
-
-  /** NEW */
+  nearLat?: number;
+  nearLng?: number;
   maxKm?: number;
-  source?: "auto" | "supabase" | "osm";
 }) {
   const params = new URLSearchParams();
+
   params.set("type", opts.type);
   params.set("limit", String(opts.limit ?? 50));
 
-  // NEW: backend routing (supabase -> osm fallback)
-  params.set("source", opts.source ?? "auto");
+  // ✅ IMPORTANT : source auto (Supabase si dispo, sinon OSM)
+  params.set("source", "auto");
+
+  // ✅ Rayon par défaut
+  params.set("max_km", String(opts.maxKm ?? 5));
 
   if (opts.onCallNow) params.set("on_call_now", "true");
 
   if (opts.nearLat != null && opts.nearLng != null) {
     params.set("near_lat", String(opts.nearLat));
     params.set("near_lng", String(opts.nearLng));
-    // NEW: rayon de recherche (évite “Lomé à Paris”)
-    params.set("max_km", String(opts.maxKm ?? 30));
   }
 
   if (opts.district) params.set("district", opts.district);
@@ -157,8 +156,8 @@ async function fetchProviders(url: string): Promise<PharmacyItem[]> {
 
 export async function searchPharmaciesOnCall(
   district: string | null,
-  nearLat?: number | null,
-  nearLng?: number | null
+  nearLat?: number,
+  nearLng?: number
 ): Promise<PharmacyItem[]> {
   const url = buildProvidersUrl({
     type: "pharmacy",
@@ -167,16 +166,15 @@ export async function searchPharmaciesOnCall(
     limit: 50,
     nearLat,
     nearLng,
-    maxKm: 30,
-    source: "auto",
+    maxKm: 7,
   });
   return fetchProviders(url);
 }
 
 export async function searchPharmacies(
   district: string | null,
-  nearLat?: number | null,
-  nearLng?: number | null
+  nearLat?: number,
+  nearLng?: number
 ): Promise<PharmacyItem[]> {
   const url = buildProvidersUrl({
     type: "pharmacy",
@@ -185,16 +183,15 @@ export async function searchPharmacies(
     limit: 50,
     nearLat,
     nearLng,
-    maxKm: 30,
-    source: "auto",
+    maxKm: 5,
   });
   return fetchProviders(url);
 }
 
 export async function searchClinics(
   district: string | null,
-  nearLat?: number | null,
-  nearLng?: number | null
+  nearLat?: number,
+  nearLng?: number
 ): Promise<PharmacyItem[]> {
   const url = buildProvidersUrl({
     type: "clinic",
@@ -203,8 +200,7 @@ export async function searchClinics(
     limit: 50,
     nearLat,
     nearLng,
-    maxKm: 30,
-    source: "auto",
+    maxKm: 5,
   });
   return fetchProviders(url);
 }
