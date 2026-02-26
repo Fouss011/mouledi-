@@ -11,6 +11,9 @@ export type PharmacyItem = {
   district?: string;
   city?: string;
   is_on_call_now?: boolean;
+  lat?: number;
+  lng?: number;
+  distance_km?: number | null;
 };
 
 // --- BASE_URL backend (dev local vs prod) ---
@@ -114,18 +117,27 @@ function buildProvidersUrl(opts: {
   district?: string | null;
   onCallNow?: boolean;
   limit?: number;
-  nearLat?: number;
-  nearLng?: number;
+  nearLat?: number | null;
+  nearLng?: number | null;
+
+  /** NEW */
+  maxKm?: number;
+  source?: "auto" | "supabase" | "osm";
 }) {
   const params = new URLSearchParams();
   params.set("type", opts.type);
   params.set("limit", String(opts.limit ?? 50));
+
+  // NEW: backend routing (supabase -> osm fallback)
+  params.set("source", opts.source ?? "auto");
 
   if (opts.onCallNow) params.set("on_call_now", "true");
 
   if (opts.nearLat != null && opts.nearLng != null) {
     params.set("near_lat", String(opts.nearLat));
     params.set("near_lng", String(opts.nearLng));
+    // NEW: rayon de recherche (évite “Lomé à Paris”)
+    params.set("max_km", String(opts.maxKm ?? 30));
   }
 
   if (opts.district) params.set("district", opts.district);
@@ -134,7 +146,6 @@ function buildProvidersUrl(opts: {
 }
 
 async function fetchProviders(url: string): Promise<PharmacyItem[]> {
-  // Fly cold start: retry + timeout plus long
   const r = await retryFetch(url, { method: "GET" }, { retries: 3, timeoutMs: 25000 });
   if (!r.ok) {
     const txt = await r.text().catch(() => "");
@@ -146,8 +157,8 @@ async function fetchProviders(url: string): Promise<PharmacyItem[]> {
 
 export async function searchPharmaciesOnCall(
   district: string | null,
-  nearLat?: number,
-  nearLng?: number
+  nearLat?: number | null,
+  nearLng?: number | null
 ): Promise<PharmacyItem[]> {
   const url = buildProvidersUrl({
     type: "pharmacy",
@@ -156,14 +167,16 @@ export async function searchPharmaciesOnCall(
     limit: 50,
     nearLat,
     nearLng,
+    maxKm: 30,
+    source: "auto",
   });
   return fetchProviders(url);
 }
 
 export async function searchPharmacies(
   district: string | null,
-  nearLat?: number,
-  nearLng?: number
+  nearLat?: number | null,
+  nearLng?: number | null
 ): Promise<PharmacyItem[]> {
   const url = buildProvidersUrl({
     type: "pharmacy",
@@ -172,14 +185,16 @@ export async function searchPharmacies(
     limit: 50,
     nearLat,
     nearLng,
+    maxKm: 30,
+    source: "auto",
   });
   return fetchProviders(url);
 }
 
 export async function searchClinics(
   district: string | null,
-  nearLat?: number,
-  nearLng?: number
+  nearLat?: number | null,
+  nearLng?: number | null
 ): Promise<PharmacyItem[]> {
   const url = buildProvidersUrl({
     type: "clinic",
@@ -188,6 +203,8 @@ export async function searchClinics(
     limit: 50,
     nearLat,
     nearLng,
+    maxKm: 30,
+    source: "auto",
   });
   return fetchProviders(url);
 }
@@ -205,7 +222,6 @@ export async function sttFromAudio(audioUri: string): Promise<{ text: string; el
 
   console.log("STT_URL =", STT_URL);
 
-  // ✅ STT peut être long (cold start + whisper)
   const r = await retryFetch(
     `${STT_URL}/stt`,
     { method: "POST", body: form },
@@ -225,7 +241,6 @@ export async function sttFromAudio(audioUri: string): Promise<{ text: string; el
 // -----------------
 export async function sttFromBlob(blob: Blob): Promise<{ text: string; elapsed_s?: number }> {
   const form = new FormData();
-  // ✅ web enregistre souvent en webm
   form.append("audio", blob, "speech.webm");
 
   const r = await retryFetch(

@@ -381,29 +381,46 @@ export default function HomeScreen({ navigation }: Props) {
     });
   };
 
-  const onDebugGo = () => {
-    const { intent, district } = routeQuery(typed);
-    setStatusText(`DEBUG: intent=${intent} | district=${district ?? "null"}`);
+  const onDebugGo = async () => {
+  const { intent, district } = routeQuery(typed);
+  setStatusText(`DEBUG: intent=${intent} | district=${district ?? "null"}`);
 
-    if (intent === "PHARMACY_ON_CALL") {
-      navigation.navigate("Results", { queryText: typed, intent: "PHARMACY_ON_CALL", district });
-      return;
-    }
+  // WEB: récupère la position si possible
+  let nearLat: number | null = null;
+  let nearLng: number | null = null;
 
-    if (intent === "PHARMACY") {
-      navigation.navigate("Results", { queryText: typed, intent: "PHARMACY", district });
-      return;
-    }
+  if (Platform.OS === "web" && navigator.geolocation) {
+    await new Promise<void>((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          nearLat = pos.coords.latitude;
+          nearLng = pos.coords.longitude;
+          resolve();
+        },
+        () => resolve(),
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    });
+  }
 
-    // ✅ debug: gérer CLINIC aussi
-    if (intent === "CLINIC") {
-      navigation.navigate("Results", { queryText: typed, intent: "CLINIC", district });
-      return;
-    }
+  if (intent === "PHARMACY_ON_CALL") {
+    navigation.navigate("Results", { queryText: typed, intent: "PHARMACY_ON_CALL", district, nearLat, nearLng });
+    return;
+  }
 
-    setShowFallback(true);
-    playUi("fallback_pharmacies_or_retry").catch(() => {});
-  };
+  if (intent === "PHARMACY") {
+    navigation.navigate("Results", { queryText: typed, intent: "PHARMACY", district, nearLat, nearLng });
+    return;
+  }
+
+  if (intent === "CLINIC") {
+    navigation.navigate("Results", { queryText: typed, intent: "CLINIC", district, nearLat, nearLng });
+    return;
+  }
+
+  setShowFallback(true);
+  playUi("fallback_pharmacies_or_retry").catch(() => {});
+};
 
   return (
     <View style={styles.container}>
