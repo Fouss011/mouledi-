@@ -88,6 +88,38 @@ export default function HomeScreen({ navigation }: Props) {
   const [webRec, setWebRec] = useState<MediaRecorder | null>(null);
   const [webChunks, setWebChunks] = useState<BlobPart[]>([]);
 
+  // ✅ Géoloc robuste (web + mobile)
+  const getNearCoords = async (): Promise<{ nearLat?: number; nearLng?: number }> => {
+    try {
+      // WEB
+      if (Platform.OS === "web") {
+        if (!navigator?.geolocation) return {};
+        const res = await new Promise<{ nearLat?: number; nearLng?: number }>((resolve) => {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => resolve({ nearLat: pos.coords.latitude, nearLng: pos.coords.longitude }),
+            () => resolve({}),
+            { enableHighAccuracy: true, timeout: 8000, maximumAge: 15000 }
+          );
+        });
+        return res;
+      }
+
+      // MOBILE (Expo)
+      const Location = await import("expo-location");
+      const perm = await Location.requestForegroundPermissionsAsync();
+      if (perm.status !== "granted") return {};
+
+      // Balanced = plus rapide/robuste que “Highest” dans beaucoup de téléphones
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      return { nearLat: loc.coords.latitude, nearLng: loc.coords.longitude };
+    } catch {
+      return {};
+    }
+  };
+
   useEffect(() => {
     (async () => {
       try {
@@ -212,22 +244,43 @@ export default function HomeScreen({ navigation }: Props) {
 
     const { intent, district } = routeQuery(text);
 
+    // ✅ Récupère la géoloc AVANT navigation
+    setStatusText("Localisation…");
+    const { nearLat, nearLng } = await getNearCoords();
+
     if (intent === "PHARMACY_ON_CALL") {
       await stopAllAudio();
-      navigation.navigate("Results", { queryText: text, intent: "PHARMACY_ON_CALL", district });
+      navigation.navigate("Results", {
+        queryText: text,
+        intent: "PHARMACY_ON_CALL",
+        district,
+        nearLat,
+        nearLng,
+      });
       return;
     }
 
     if (intent === "PHARMACY") {
       await stopAllAudio();
-      navigation.navigate("Results", { queryText: text, intent: "PHARMACY", district });
+      navigation.navigate("Results", {
+        queryText: text,
+        intent: "PHARMACY",
+        district,
+        nearLat,
+        nearLng,
+      });
       return;
     }
 
-    // ✅ IMPORTANT: gérer CLINIC AVANT fallback
     if (intent === "CLINIC") {
       await stopAllAudio();
-      navigation.navigate("Results", { queryText: text, intent: "CLINIC", district });
+      navigation.navigate("Results", {
+        queryText: text,
+        intent: "CLINIC",
+        district,
+        nearLat,
+        nearLng,
+      });
       return;
     }
 
@@ -289,26 +342,43 @@ export default function HomeScreen({ navigation }: Props) {
 
               const { intent, district } = routeQuery(text);
 
+              // ✅ Géoloc WEB avant navigate
+              setStatusText("Localisation…");
+              const { nearLat, nearLng } = await getNearCoords();
+
               if (intent === "PHARMACY_ON_CALL") {
                 await stopAllAudio();
                 navigation.navigate("Results", {
                   queryText: text,
                   intent: "PHARMACY_ON_CALL",
                   district,
+                  nearLat,
+                  nearLng,
                 });
                 return;
               }
 
               if (intent === "PHARMACY") {
                 await stopAllAudio();
-                navigation.navigate("Results", { queryText: text, intent: "PHARMACY", district });
+                navigation.navigate("Results", {
+                  queryText: text,
+                  intent: "PHARMACY",
+                  district,
+                  nearLat,
+                  nearLng,
+                });
                 return;
               }
 
-              // ✅ IMPORTANT: gérer CLINIC AVANT fallback
               if (intent === "CLINIC") {
                 await stopAllAudio();
-                navigation.navigate("Results", { queryText: text, intent: "CLINIC", district });
+                navigation.navigate("Results", {
+                  queryText: text,
+                  intent: "CLINIC",
+                  district,
+                  nearLat,
+                  nearLng,
+                });
                 return;
               }
 
@@ -373,54 +443,45 @@ export default function HomeScreen({ navigation }: Props) {
     }
   };
 
-  const goPharmacies = () => {
+  const goPharmacies = async () => {
+    // ✅ Même le fallback doit envoyer la position
+    setStatusText("Localisation…");
+    const { nearLat, nearLng } = await getNearCoords();
+
     navigation.navigate("Results", {
       queryText: lastHeard || "pharmacie",
       intent: "PHARMACY",
       district: null,
+      nearLat,
+      nearLng,
     });
   };
 
   const onDebugGo = async () => {
-  const { intent, district } = routeQuery(typed);
-  setStatusText(`DEBUG: intent=${intent} | district=${district ?? "null"}`);
+    const { intent, district } = routeQuery(typed);
+    setStatusText(`DEBUG: intent=${intent} | district=${district ?? "null"}`);
 
-  // WEB: récupère la position si possible
-  let nearLat: number | null = null;
-  let nearLng: number | null = null;
+    // ✅ Debug récupère aussi la position (web + mobile)
+    const { nearLat, nearLng } = await getNearCoords();
 
-  if (Platform.OS === "web" && navigator.geolocation) {
-    await new Promise<void>((resolve) => {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          nearLat = pos.coords.latitude;
-          nearLng = pos.coords.longitude;
-          resolve();
-        },
-        () => resolve(),
-        { enableHighAccuracy: true, timeout: 8000 }
-      );
-    });
-  }
+    if (intent === "PHARMACY_ON_CALL") {
+      navigation.navigate("Results", { queryText: typed, intent: "PHARMACY_ON_CALL", district, nearLat, nearLng });
+      return;
+    }
 
-  if (intent === "PHARMACY_ON_CALL") {
-    navigation.navigate("Results", { queryText: typed, intent: "PHARMACY_ON_CALL", district, nearLat, nearLng });
-    return;
-  }
+    if (intent === "PHARMACY") {
+      navigation.navigate("Results", { queryText: typed, intent: "PHARMACY", district, nearLat, nearLng });
+      return;
+    }
 
-  if (intent === "PHARMACY") {
-    navigation.navigate("Results", { queryText: typed, intent: "PHARMACY", district, nearLat, nearLng });
-    return;
-  }
+    if (intent === "CLINIC") {
+      navigation.navigate("Results", { queryText: typed, intent: "CLINIC", district, nearLat, nearLng });
+      return;
+    }
 
-  if (intent === "CLINIC") {
-    navigation.navigate("Results", { queryText: typed, intent: "CLINIC", district, nearLat, nearLng });
-    return;
-  }
-
-  setShowFallback(true);
-  playUi("fallback_pharmacies_or_retry").catch(() => {});
-};
+    setShowFallback(true);
+    playUi("fallback_pharmacies_or_retry").catch(() => {});
+  };
 
   return (
     <View style={styles.container}>

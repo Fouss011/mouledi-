@@ -126,20 +126,21 @@ function buildProvidersUrl(opts: {
   params.set("type", opts.type);
   params.set("limit", String(opts.limit ?? 50));
 
-  // ✅ IMPORTANT : source auto (Supabase si dispo, sinon OSM)
-  params.set("source", "auto");
-
-  // ✅ Rayon par défaut
-  params.set("max_km", String(opts.maxKm ?? 5));
-
   if (opts.onCallNow) params.set("on_call_now", "true");
+  if (opts.district) params.set("district", opts.district);
 
+  // ✅ IMPORTANT: on n’envoie source/max_km QUE si on a une position.
+  // Sinon, on laisse le backend faire son comportement par défaut (Lomé / Supabase).
   if (opts.nearLat != null && opts.nearLng != null) {
     params.set("near_lat", String(opts.nearLat));
     params.set("near_lng", String(opts.nearLng));
-  }
 
-  if (opts.district) params.set("district", opts.district);
+    // ✅ auto = Supabase si zone connue, sinon OSM
+    params.set("source", "auto");
+
+    // ✅ Rayon
+    params.set("max_km", String(opts.maxKm ?? 5));
+  }
 
   return `${BASE_URL}/health/providers?${params.toString()}`;
 }

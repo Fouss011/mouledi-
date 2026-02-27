@@ -4,7 +4,6 @@ import { createNativeStackNavigator, NativeStackNavigationOptions } from "@react
 
 import HomeScreen from "./src/screens/HomeScreen";
 import ResultsScreen from "./src/screens/ResultsScreen";
-import type { Intent } from "./src/lib/nlu";
 
 export type RootStackParamList = {
   Home: undefined;
@@ -18,7 +17,6 @@ export type RootStackParamList = {
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
-
 
 const screenOptions: NativeStackNavigationOptions = {
   headerShown: false,
