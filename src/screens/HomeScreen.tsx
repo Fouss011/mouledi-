@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { View, Text, Pressable, StyleSheet, TextInput, Platform } from "react-native";
 import { Audio } from "expo-av";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import * as Location from "expo-location";
 
 import { RootStackParamList } from "../../App";
 import { routeQuery } from "../lib/nlu";
@@ -24,19 +25,16 @@ async function stopCurrentSound() {
 }
 
 async function stopAllAudio() {
-  // Ici on ne gère pas Speech dans Home (Home ne fait plus de TTS)
   await stopCurrentSound();
 }
 
 async function playUi(key: string, lang: string = "mina") {
-  const seq = ++playSeq; // ✅ ce playUi devient "le dernier"
+  const seq = ++playSeq;
 
   try {
     await stopAllAudio();
 
-    const r = await fetch(
-      `${BASE_URL}/health/ui-audio?key=${encodeURIComponent(key)}&lang=${encodeURIComponent(lang)}`
-    );
+    const r = await fetch(`${BASE_URL}/health/ui-audio?key=${encodeURIComponent(key)}&lang=${encodeURIComponent(lang)}`);
     if (!r.ok) return;
 
     const data = await r.json();
@@ -72,13 +70,61 @@ async function playUi(key: string, lang: string = "mina") {
   } catch {}
 }
 
+/** ✅ Localisation robuste (web + mobile) */
+async function getNearCoordsSafe(timeoutMs = 8000): Promise<{ nearLat: number | null; nearLng: number | null }> {
+  // WEB
+  if (Platform.OS === "web" && typeof navigator !== "undefined" && navigator.geolocation) {
+    return await new Promise((resolve) => {
+      let done = false;
+
+      const timer = setTimeout(() => {
+        if (done) return;
+        done = true;
+        resolve({ nearLat: null, nearLng: null });
+      }, timeoutMs);
+
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          resolve({ nearLat: pos.coords.latitude, nearLng: pos.coords.longitude });
+        },
+        () => {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          resolve({ nearLat: null, nearLng: null });
+        },
+        { enableHighAccuracy: true, timeout: timeoutMs }
+      );
+    });
+  }
+
+  // MOBILE (Expo)
+  try {
+    const perm = await Location.requestForegroundPermissionsAsync();
+    if (!perm.granted) return { nearLat: null, nearLng: null };
+
+    const locPromise = Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs));
+
+    const loc = (await Promise.race([locPromise, timeoutPromise])) as any;
+    if (!loc?.coords) return { nearLat: null, nearLng: null };
+
+    return { nearLat: loc.coords.latitude, nearLng: loc.coords.longitude };
+  } catch {
+    return { nearLat: null, nearLng: null };
+  }
+}
+
 export default function HomeScreen({ navigation }: Props) {
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [statusText, setStatusText] = useState<string>("");
 
   // Debug (caché)
   const [debugMode, setDebugMode] = useState<boolean>(false);
-  const [typed, setTyped] = useState<string>("pharmacie de garde a be");
+  const [typed, setTyped] = useState<string>("pharmacie");
 
   // fallback UI (si intent UNKNOWN)
   const [lastHeard, setLastHeard] = useState<string>("");
@@ -87,38 +133,6 @@ export default function HomeScreen({ navigation }: Props) {
   // --- WEB recorder ---
   const [webRec, setWebRec] = useState<MediaRecorder | null>(null);
   const [webChunks, setWebChunks] = useState<BlobPart[]>([]);
-
-  // ✅ Géoloc robuste (web + mobile)
-  const getNearCoords = async (): Promise<{ nearLat?: number; nearLng?: number }> => {
-    try {
-      // WEB
-      if (Platform.OS === "web") {
-        if (!navigator?.geolocation) return {};
-        const res = await new Promise<{ nearLat?: number; nearLng?: number }>((resolve) => {
-          navigator.geolocation.getCurrentPosition(
-            (pos) => resolve({ nearLat: pos.coords.latitude, nearLng: pos.coords.longitude }),
-            () => resolve({}),
-            { enableHighAccuracy: true, timeout: 8000, maximumAge: 15000 }
-          );
-        });
-        return res;
-      }
-
-      // MOBILE (Expo)
-      const Location = await import("expo-location");
-      const perm = await Location.requestForegroundPermissionsAsync();
-      if (perm.status !== "granted") return {};
-
-      // Balanced = plus rapide/robuste que “Highest” dans beaucoup de téléphones
-      const loc = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-
-      return { nearLat: loc.coords.latitude, nearLng: loc.coords.longitude };
-    } catch {
-      return {};
-    }
-  };
 
   useEffect(() => {
     (async () => {
@@ -182,7 +196,6 @@ export default function HomeScreen({ navigation }: Props) {
 
       await rec.startAsync();
       setRecording(rec);
-      console.log("recording started");
       setStatusText("J'écoute...");
     } catch (e: any) {
       console.log("startRecording error =", e?.name, e?.message || e);
@@ -244,43 +257,25 @@ export default function HomeScreen({ navigation }: Props) {
 
     const { intent, district } = routeQuery(text);
 
-    // ✅ Récupère la géoloc AVANT navigation
-    setStatusText("Localisation…");
-    const { nearLat, nearLng } = await getNearCoords();
+    // ✅ Localisation robuste (même en audio)
+    setStatusText("Localisation...");
+    const { nearLat, nearLng } = await getNearCoordsSafe(8000);
 
     if (intent === "PHARMACY_ON_CALL") {
       await stopAllAudio();
-      navigation.navigate("Results", {
-        queryText: text,
-        intent: "PHARMACY_ON_CALL",
-        district,
-        nearLat,
-        nearLng,
-      });
+      navigation.navigate("Results", { queryText: text, intent: "PHARMACY_ON_CALL", district, nearLat, nearLng });
       return;
     }
 
     if (intent === "PHARMACY") {
       await stopAllAudio();
-      navigation.navigate("Results", {
-        queryText: text,
-        intent: "PHARMACY",
-        district,
-        nearLat,
-        nearLng,
-      });
+      navigation.navigate("Results", { queryText: text, intent: "PHARMACY", district, nearLat, nearLng });
       return;
     }
 
     if (intent === "CLINIC") {
       await stopAllAudio();
-      navigation.navigate("Results", {
-        queryText: text,
-        intent: "CLINIC",
-        district,
-        nearLat,
-        nearLng,
-      });
+      navigation.navigate("Results", { queryText: text, intent: "CLINIC", district, nearLat, nearLng });
       return;
     }
 
@@ -310,7 +305,6 @@ export default function HomeScreen({ navigation }: Props) {
           rec.onstop = async () => {
             try {
               setStatusText("Traitement...");
-
               const blob = new Blob(chunks, { type: "audio/webm" });
 
               setStatusText("Réveil serveur…");
@@ -342,43 +336,24 @@ export default function HomeScreen({ navigation }: Props) {
 
               const { intent, district } = routeQuery(text);
 
-              // ✅ Géoloc WEB avant navigate
-              setStatusText("Localisation…");
-              const { nearLat, nearLng } = await getNearCoords();
+              setStatusText("Localisation...");
+              const { nearLat, nearLng } = await getNearCoordsSafe(8000);
 
               if (intent === "PHARMACY_ON_CALL") {
                 await stopAllAudio();
-                navigation.navigate("Results", {
-                  queryText: text,
-                  intent: "PHARMACY_ON_CALL",
-                  district,
-                  nearLat,
-                  nearLng,
-                });
+                navigation.navigate("Results", { queryText: text, intent: "PHARMACY_ON_CALL", district, nearLat, nearLng });
                 return;
               }
 
               if (intent === "PHARMACY") {
                 await stopAllAudio();
-                navigation.navigate("Results", {
-                  queryText: text,
-                  intent: "PHARMACY",
-                  district,
-                  nearLat,
-                  nearLng,
-                });
+                navigation.navigate("Results", { queryText: text, intent: "PHARMACY", district, nearLat, nearLng });
                 return;
               }
 
               if (intent === "CLINIC") {
                 await stopAllAudio();
-                navigation.navigate("Results", {
-                  queryText: text,
-                  intent: "CLINIC",
-                  district,
-                  nearLat,
-                  nearLng,
-                });
+                navigation.navigate("Results", { queryText: text, intent: "CLINIC", district, nearLat, nearLng });
                 return;
               }
 
@@ -425,7 +400,6 @@ export default function HomeScreen({ navigation }: Props) {
       setRecording(null);
 
       const msgRaw = String(e?.message || "");
-
       const msg =
         msgRaw.startsWith("STT error")
           ? "Erreur de reconnaissance vocale (STT)"
@@ -444,9 +418,8 @@ export default function HomeScreen({ navigation }: Props) {
   };
 
   const goPharmacies = async () => {
-    // ✅ Même le fallback doit envoyer la position
-    setStatusText("Localisation…");
-    const { nearLat, nearLng } = await getNearCoords();
+    setStatusText("Localisation...");
+    const { nearLat, nearLng } = await getNearCoordsSafe(8000);
 
     navigation.navigate("Results", {
       queryText: lastHeard || "pharmacie",
@@ -461,8 +434,8 @@ export default function HomeScreen({ navigation }: Props) {
     const { intent, district } = routeQuery(typed);
     setStatusText(`DEBUG: intent=${intent} | district=${district ?? "null"}`);
 
-    // ✅ Debug récupère aussi la position (web + mobile)
-    const { nearLat, nearLng } = await getNearCoords();
+    setStatusText("Localisation...");
+    const { nearLat, nearLng } = await getNearCoordsSafe(8000);
 
     if (intent === "PHARMACY_ON_CALL") {
       navigation.navigate("Results", { queryText: typed, intent: "PHARMACY_ON_CALL", district, nearLat, nearLng });
@@ -495,9 +468,7 @@ export default function HomeScreen({ navigation }: Props) {
           <Text style={styles.micText}>{recording ? "⏹️" : "🎙️"}</Text>
         </Pressable>
 
-        <Text style={styles.hint}>
-          {recording ? "Enregistrement..." : "Appuie pour parler, puis ré-appuie pour valider."}
-        </Text>
+        <Text style={styles.hint}>{recording ? "Enregistrement..." : "Appuie pour parler, puis ré-appuie pour valider."}</Text>
 
         {statusText ? <Text style={styles.status}>{statusText}</Text> : null}
 
@@ -524,7 +495,7 @@ export default function HomeScreen({ navigation }: Props) {
             <TextInput
               value={typed}
               onChangeText={setTyped}
-              placeholder="Ex: pharmacie de garde a be"
+              placeholder="Ex: pharmacie de garde"
               placeholderTextColor="#777"
               style={styles.input}
             />
