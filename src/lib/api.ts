@@ -16,6 +16,12 @@ export type PharmacyItem = {
   distance_km?: number | null;
 };
 
+export type IntentMatchResp = {
+  intent: "PHARMACY" | "CLINIC" | "PHARMACY_ON_CALL" | "UNKNOWN" | string;
+  confidence: number;
+  scores?: { intent: string; score: number; n?: number }[];
+};
+
 // --- BASE_URL backend (dev local vs prod) ---
 function getDevHostIp(): string | null {
   const hostUri = (Constants.expoConfig as any)?.hostUri as string | undefined;
@@ -130,15 +136,10 @@ function buildProvidersUrl(opts: {
   if (opts.district) params.set("district", opts.district);
 
   // ✅ IMPORTANT: on n’envoie source/max_km QUE si on a une position.
-  // Sinon, on laisse le backend faire son comportement par défaut (Lomé / Supabase).
   if (opts.nearLat != null && opts.nearLng != null) {
     params.set("near_lat", String(opts.nearLat));
     params.set("near_lng", String(opts.nearLng));
-
-    // ✅ auto = Supabase si zone connue, sinon OSM
     params.set("source", "auto");
-
-    // ✅ Rayon
     params.set("max_km", String(opts.maxKm ?? 5));
   }
 
@@ -204,6 +205,49 @@ export async function searchClinics(
     maxKm: 5,
   });
   return fetchProviders(url);
+}
+
+// -----------------
+// ✅ INTENT AUDIO MATCHING (NEW)
+// -----------------
+export async function matchIntentFromAudio(audioUri: string, minConf = 0.35): Promise<IntentMatchResp> {
+  const form = new FormData();
+  form.append("file", {
+    uri: audioUri,
+    name: "intent.m4a",
+    type: "audio/m4a",
+  } as any);
+
+  const r = await retryFetch(
+    `${BASE_URL}/intent/match?min_conf=${encodeURIComponent(String(minConf))}`,
+    { method: "POST", body: form },
+    { retries: 2, timeoutMs: 60000, backoffMs: 1200 }
+  );
+
+  if (!r.ok) {
+    const txt = await r.text().catch(() => "");
+    throw new Error(`Intent match error ${r.status}: ${txt}`);
+  }
+
+  return await r.json();
+}
+
+export async function matchIntentFromBlob(blob: Blob, minConf = 0.35): Promise<IntentMatchResp> {
+  const form = new FormData();
+  form.append("file", blob, "intent.webm");
+
+  const r = await retryFetch(
+    `${BASE_URL}/intent/match?min_conf=${encodeURIComponent(String(minConf))}`,
+    { method: "POST", body: form },
+    { retries: 2, timeoutMs: 60000, backoffMs: 1200 }
+  );
+
+  if (!r.ok) {
+    const txt = await r.text().catch(() => "");
+    throw new Error(`Intent match error ${r.status}: ${txt}`);
+  }
+
+  return await r.json();
 }
 
 // -----------------

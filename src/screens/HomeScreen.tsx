@@ -6,7 +6,16 @@ import * as Location from "expo-location";
 
 import { RootStackParamList } from "../../App";
 import { routeQuery } from "../lib/nlu";
-import { pingBackend, pingStt, sttFromAudio, sttFromBlob, BASE_URL, STT_URL } from "../lib/api";
+import {
+  pingBackend,
+  pingStt,
+  sttFromAudio,
+  sttFromBlob,
+  matchIntentFromAudio,
+  matchIntentFromBlob,
+  BASE_URL,
+  STT_URL,
+} from "../lib/api";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Home">;
 
@@ -243,39 +252,71 @@ export default function HomeScreen({ navigation }: Props) {
       return;
     }
 
-    setStatusText("Reconnaissance…");
-    const { text } = await sttFromAudio(uri);
+    // ✅ PARALLÈLE : intent audio + stt
+    setStatusText("Compréhension…");
 
-    if (!text || text.trim().length < 2) {
-      setStatusText("Répétez");
-      await playUi("repeat_please");
-      return;
+    const [intentRes, sttRes] = await Promise.allSettled([
+      matchIntentFromAudio(uri, 0.35),
+      sttFromAudio(uri),
+    ]);
+
+    // --------- INTENT (prioritaire) ---------
+    let audioIntent: string = "UNKNOWN";
+    let audioConf: number = 0;
+
+    if (intentRes.status === "fulfilled") {
+      audioIntent = intentRes.value?.intent ?? "UNKNOWN";
+      audioConf = Number(intentRes.value?.confidence ?? 0);
+      console.log("[AUDIO_INTENT]", audioIntent, audioConf, intentRes.value?.scores);
+    } else {
+      console.log("[AUDIO_INTENT] error:", intentRes.reason?.message || intentRes.reason);
     }
 
-    setLastHeard(text);
-    setStatusText(`Reconnu: ${text}`);
+    // --------- STT (secondaire) ---------
+    let text = "";
+    if (sttRes.status === "fulfilled") {
+      text = sttRes.value?.text ?? "";
+    } else {
+      console.log("[STT] error:", sttRes.reason?.message || sttRes.reason);
+    }
 
-    const { intent, district } = routeQuery(text);
+    if (text && text.trim().length >= 2) {
+      setLastHeard(text);
+      setStatusText(`Reconnu: ${text}`);
+    } else {
+      setLastHeard("");
+      setStatusText(audioIntent !== "UNKNOWN" ? `Compris (audio): ${audioIntent}` : "Répétez");
+    }
+
+    // ✅ District vient du texte s'il existe (pas obligatoire)
+    const routed = text && text.trim().length >= 2 ? routeQuery(text) : { intent: "UNKNOWN", district: null as any };
+    const district = (routed as any)?.district ?? null;
 
     // ✅ Localisation robuste (même en audio)
     setStatusText("Localisation...");
     const { nearLat, nearLng } = await getNearCoordsSafe(8000);
 
-    if (intent === "PHARMACY_ON_CALL") {
+    // ✅ Décision finale : AUDIO FIRST, TEXTE EN FALLBACK
+    const finalIntent =
+      audioIntent !== "UNKNOWN"
+        ? audioIntent
+        : (routed as any)?.intent ?? "UNKNOWN";
+
+    if (finalIntent === "PHARMACY_ON_CALL") {
       await stopAllAudio();
-      navigation.navigate("Results", { queryText: text, intent: "PHARMACY_ON_CALL", district, nearLat, nearLng });
+      navigation.navigate("Results", { queryText: text || "pharmacie de garde", intent: "PHARMACY_ON_CALL", district, nearLat, nearLng });
       return;
     }
 
-    if (intent === "PHARMACY") {
+    if (finalIntent === "PHARMACY") {
       await stopAllAudio();
-      navigation.navigate("Results", { queryText: text, intent: "PHARMACY", district, nearLat, nearLng });
+      navigation.navigate("Results", { queryText: text || "pharmacie", intent: "PHARMACY", district, nearLat, nearLng });
       return;
     }
 
-    if (intent === "CLINIC") {
+    if (finalIntent === "CLINIC") {
       await stopAllAudio();
-      navigation.navigate("Results", { queryText: text, intent: "CLINIC", district, nearLat, nearLng });
+      navigation.navigate("Results", { queryText: text || "clinique", intent: "CLINIC", district, nearLat, nearLng });
       return;
     }
 
@@ -322,38 +363,65 @@ export default function HomeScreen({ navigation }: Props) {
                 return;
               }
 
-              setStatusText("Reconnaissance…");
-              const { text } = await sttFromBlob(blob);
+              // ✅ PARALLÈLE : intent audio + stt
+              setStatusText("Compréhension…");
+              const [intentRes, sttRes] = await Promise.allSettled([
+                matchIntentFromBlob(blob, 0.35),
+                sttFromBlob(blob),
+              ]);
 
-              if (!text || text.trim().length < 2) {
-                setStatusText("Répétez");
-                await playUi("repeat_please");
-                return;
+              let audioIntent: string = "UNKNOWN";
+              let audioConf: number = 0;
+
+              if (intentRes.status === "fulfilled") {
+                audioIntent = intentRes.value?.intent ?? "UNKNOWN";
+                audioConf = Number(intentRes.value?.confidence ?? 0);
+                console.log("[AUDIO_INTENT]", audioIntent, audioConf, intentRes.value?.scores);
+              } else {
+                console.log("[AUDIO_INTENT] error:", intentRes.reason?.message || intentRes.reason);
               }
 
-              setLastHeard(text);
-              setStatusText(`Reconnu: ${text}`);
+              let text = "";
+              if (sttRes.status === "fulfilled") {
+                text = sttRes.value?.text ?? "";
+              } else {
+                console.log("[STT] error:", sttRes.reason?.message || sttRes.reason);
+              }
 
-              const { intent, district } = routeQuery(text);
+              if (text && text.trim().length >= 2) {
+                setLastHeard(text);
+                setStatusText(`Reconnu: ${text}`);
+              } else {
+                setLastHeard("");
+                setStatusText(audioIntent !== "UNKNOWN" ? `Compris (audio): ${audioIntent}` : "Répétez");
+              }
+
+              const routed = text && text.trim().length >= 2 ? routeQuery(text) : { intent: "UNKNOWN", district: null as any };
+              const district = (routed as any)?.district ?? null;
 
               setStatusText("Localisation...");
               const { nearLat, nearLng } = await getNearCoordsSafe(8000);
 
-              if (intent === "PHARMACY_ON_CALL") {
+              const finalIntent =
+                audioIntent !== "UNKNOWN"
+                  ? audioIntent
+                  : (routed as any)?.intent ?? "UNKNOWN";
+
+              if (finalIntent === "PHARMACY_ON_CALL") {
                 await stopAllAudio();
-                navigation.navigate("Results", { queryText: text, intent: "PHARMACY_ON_CALL", district, nearLat, nearLng });
+                navigation.navigate("Results", { queryText: text || "pharmacie de garde", intent: "PHARMACY_ON_CALL", district, nearLat, nearLng });
                 return;
               }
 
-              if (intent === "PHARMACY") {
+              if (finalIntent === "PHARMACY") {
                 await stopAllAudio();
-                navigation.navigate("Results", { queryText: text, intent: "PHARMACY", district, nearLat, nearLng });
+                navigation.navigate("Results", { queryText: text || "pharmacie", intent: "PHARMACY", district, nearLat, nearLng });
                 return;
               }
 
-              if (intent === "CLINIC") {
+              if (finalIntent === "CLINIC") {
                 await stopAllAudio();
-                navigation.navigate("Results", { queryText: text, intent: "CLINIC", district, nearLat, nearLng });
+                navigation.navigate("Results", { queryText: text || "clinique", intent: "CLINIC", district, nearLat, nearLng });
                 return;
               }
 
@@ -367,6 +435,8 @@ export default function HomeScreen({ navigation }: Props) {
                   ? "Le serveur met trop de temps (timeout)"
                   : String(e?.message || "").includes("STT error")
                   ? "Erreur de reconnaissance vocale"
+                  : String(e?.message || "").includes("Intent match error")
+                  ? "Erreur de compréhension audio"
                   : "Problème de connexion / serveur";
 
               setStatusText(msg);
@@ -403,6 +473,8 @@ export default function HomeScreen({ navigation }: Props) {
       const msg =
         msgRaw.startsWith("STT error")
           ? "Erreur de reconnaissance vocale (STT)"
+          : msgRaw.startsWith("Intent match error")
+          ? "Erreur compréhension audio"
           : msgRaw.toLowerCase().includes("permission")
           ? "Autorisation micro refusée"
           : msgRaw.toLowerCase().includes("network") ||
