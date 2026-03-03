@@ -6,7 +6,16 @@ import * as Location from "expo-location";
 
 import { RootStackParamList } from "../../App";
 import { routeQuery } from "../lib/nlu";
-import { pingBackend, pingStt, sttFromAudio, sttFromBlob, matchIntentFromAudio, matchIntentFromBlob, BASE_URL, STT_URL } from "../lib/api";
+import {
+  pingBackend,
+  pingStt,
+  sttFromAudio,
+  sttFromBlob,
+  matchIntentFromAudio,
+  matchIntentFromBlob,
+  BASE_URL,
+  STT_URL,
+} from "../lib/api";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Home">;
 
@@ -34,7 +43,9 @@ async function playUi(key: string, lang: string = "mina") {
   try {
     await stopAllAudio();
 
-    const r = await fetch(`${BASE_URL}/health/ui-audio?key=${encodeURIComponent(key)}&lang=${encodeURIComponent(lang)}`);
+    const r = await fetch(
+      `${BASE_URL}/health/ui-audio?key=${encodeURIComponent(key)}&lang=${encodeURIComponent(lang)}`
+    );
     if (!r.ok) return;
 
     const data = await r.json();
@@ -71,9 +82,11 @@ async function playUi(key: string, lang: string = "mina") {
 }
 
 /** ✅ Localisation robuste (web + mobile) */
-async function getNearCoordsSafe(timeoutMs = 8000): Promise<{ nearLat: number | null; nearLng: number | null }> {
+async function getNearCoordsSafe(
+  timeoutMs = 8000
+): Promise<{ nearLat: number | null; nearLng: number | null }> {
   // WEB
-  if (Platform.OS === "web" && typeof navigator !== "undefined" && navigator.geolocation) {
+  if (Platform.OS === "web" && typeof navigator !== "undefined" && (navigator as any).geolocation) {
     return await new Promise((resolve) => {
       let done = false;
 
@@ -83,8 +96,8 @@ async function getNearCoordsSafe(timeoutMs = 8000): Promise<{ nearLat: number | 
         resolve({ nearLat: null, nearLng: null });
       }, timeoutMs);
 
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
+      (navigator as any).geolocation.getCurrentPosition(
+        (pos: any) => {
           if (done) return;
           done = true;
           clearTimeout(timer);
@@ -116,6 +129,29 @@ async function getNearCoordsSafe(timeoutMs = 8000): Promise<{ nearLat: number | 
   } catch {
     return { nearLat: null, nearLng: null };
   }
+}
+
+/** ✅ Pick intent audio ONLY si clair (delta gate) */
+function pickClearAudioIntent(
+  resp: { intent?: string; confidence?: number; scores?: { intent: string; score: number }[] } | null | undefined,
+  deltaMin = 0.18,
+  minConfFallback = 0.35
+): { intent: string; confidence: number; isClear: boolean; delta?: number } {
+  const intent = resp?.intent ?? "UNKNOWN";
+  const confidence = Number(resp?.confidence ?? 0);
+  const scores = resp?.scores;
+
+  if (!Array.isArray(scores) || scores.length < 2) {
+    const isClear = intent !== "UNKNOWN" && confidence >= minConfFallback;
+    return { intent, confidence, isClear };
+  }
+
+  const top = Number(scores[0]?.score ?? 0);
+  const second = Number(scores[1]?.score ?? 0);
+  const delta = top - second;
+
+  const isClear = intent !== "UNKNOWN" && delta >= deltaMin;
+  return { intent, confidence, isClear, delta };
 }
 
 export default function HomeScreen({ navigation }: Props) {
@@ -205,6 +241,46 @@ export default function HomeScreen({ navigation }: Props) {
     }
   };
 
+  const navigateByIntent = async (finalIntent: string, text: string, district: string | null, nearLat: number | null, nearLng: number | null) => {
+    if (finalIntent === "PHARMACY_ON_CALL") {
+      await stopAllAudio();
+      navigation.navigate("Results", {
+        queryText: text || "pharmacie de garde",
+        intent: "PHARMACY_ON_CALL",
+        district,
+        nearLat,
+        nearLng,
+      });
+      return true;
+    }
+
+    if (finalIntent === "PHARMACY") {
+      await stopAllAudio();
+      navigation.navigate("Results", {
+        queryText: text || "pharmacie",
+        intent: "PHARMACY",
+        district,
+        nearLat,
+        nearLng,
+      });
+      return true;
+    }
+
+    if (finalIntent === "CLINIC") {
+      await stopAllAudio();
+      navigation.navigate("Results", {
+        queryText: text || "clinique",
+        intent: "CLINIC",
+        district,
+        nearLat,
+        nearLng,
+      });
+      return true;
+    }
+
+    return false;
+  };
+
   const stopRecordingAndProcess = async (rec: Audio.Recording) => {
     setStatusText("Traitement...");
     await rec.stopAndUnloadAsync();
@@ -243,47 +319,37 @@ export default function HomeScreen({ navigation }: Props) {
       return;
     }
 
-    // ✅ PARALLÈLE : intent audio + stt
-    setStatusText("Compréhension…");
+    // ✅ AUDIO FIRST
+    setStatusText("Compréhension audio…");
+    let audioResp: any = null;
 
-    const [intentRes, sttRes] = await Promise.allSettled([
-      matchIntentFromAudio(uri, 0.0),
-      sttFromAudio(uri),
-    ]);
+    try {
+      audioResp = await matchIntentFromAudio(uri, 0.0);
+      console.log("[AUDIO_INTENT raw]", audioResp);
+    } catch (e: any) {
+      console.log("[AUDIO_INTENT] error:", e?.message || e);
+    }
 
-    // --------- INTENT (prioritaire) ---------
-    let audioIntent: string = "UNKNOWN";
-    let audioConf: number = 0;
+    const picked = pickClearAudioIntent(audioResp, 0.18, 0.35);
+    let audioIntent = picked.intent;
 
-    if (intentRes.status === "fulfilled") {
-      audioIntent = intentRes.value?.intent ?? "UNKNOWN";
-      audioConf = Number(intentRes.value?.confidence ?? 0);
-      console.log("[AUDIO_INTENT]", audioIntent, audioConf, intentRes.value?.scores);
+    if (picked.delta != null) {
+      console.log("[AUDIO_INTENT] picked=", audioIntent, "conf=", picked.confidence, "delta=", picked.delta, "clear=", picked.isClear);
     } else {
-      console.log("[AUDIO_INTENT] error:", intentRes.reason?.message || intentRes.reason);
+      console.log("[AUDIO_INTENT] picked=", audioIntent, "conf=", picked.confidence, "clear=", picked.isClear);
     }
 
-    // ✅ Delta gate: si trop ambigu, on ignore l'intent audio
-if (intentRes.status === "fulfilled") {
-  const scores = intentRes.value?.scores;
-  if (Array.isArray(scores) && scores.length >= 2) {
-    const top = Number(scores[0]?.score ?? 0);
-    const second = Number(scores[1]?.score ?? 0);
-    const delta = top - second;
-
-    if (delta < 0.18) {
-      console.log("[AUDIO_INTENT] ambiguous delta=", delta, "-> fallback to text");
-      audioIntent = "UNKNOWN";
-    }
-  }
-}
-
-    // --------- STT (secondaire) ---------
+    // ✅ STT seulement si audio pas clair
     let text = "";
-    if (sttRes.status === "fulfilled") {
-      text = sttRes.value?.text ?? "";
-    } else {
-      console.log("[STT] error:", sttRes.reason?.message || sttRes.reason);
+    if (!picked.isClear) {
+      setStatusText("Reconnaissance…");
+      try {
+        const stt = await sttFromAudio(uri);
+        text = stt?.text ?? "";
+      } catch (e: any) {
+        console.log("[STT] error:", e?.message || e);
+        text = "";
+      }
     }
 
     if (text && text.trim().length >= 2) {
@@ -294,40 +360,22 @@ if (intentRes.status === "fulfilled") {
       setStatusText(audioIntent !== "UNKNOWN" ? `Compris (audio): ${audioIntent}` : "Répétez");
     }
 
-    // ✅ District vient du texte s'il existe (pas obligatoire)
+    // District vient du texte si dispo
     const routed = text && text.trim().length >= 2 ? routeQuery(text) : { intent: "UNKNOWN", district: null as any };
     const district = (routed as any)?.district ?? null;
 
-    // ✅ Localisation robuste (même en audio)
+    // Localisation
     setStatusText("Localisation...");
     const { nearLat, nearLng } = await getNearCoordsSafe(8000);
 
-    // ✅ Décision finale : AUDIO FIRST, TEXTE EN FALLBACK
-    const finalIntent =
-      audioIntent !== "UNKNOWN"
-        ? audioIntent
-        : (routed as any)?.intent ?? "UNKNOWN";
+    // Décision finale
+    const finalIntent = picked.isClear ? audioIntent : (routed as any)?.intent ?? "UNKNOWN";
 
-    if (finalIntent === "PHARMACY_ON_CALL") {
-      await stopAllAudio();
-      navigation.navigate("Results", { queryText: text || "pharmacie de garde", intent: "PHARMACY_ON_CALL", district, nearLat, nearLng });
-      return;
+    const ok = await navigateByIntent(finalIntent, text, district, nearLat, nearLng);
+    if (!ok) {
+      setShowFallback(true);
+      await playUi("fallback_pharmacies_or_retry");
     }
-
-    if (finalIntent === "PHARMACY") {
-      await stopAllAudio();
-      navigation.navigate("Results", { queryText: text || "pharmacie", intent: "PHARMACY", district, nearLat, nearLng });
-      return;
-    }
-
-    if (finalIntent === "CLINIC") {
-      await stopAllAudio();
-      navigation.navigate("Results", { queryText: text || "clinique", intent: "CLINIC", district, nearLat, nearLng });
-      return;
-    }
-
-    setShowFallback(true);
-    await playUi("fallback_pharmacies_or_retry");
   };
 
   const onPressMic = async () => {
@@ -341,11 +389,11 @@ if (intentRes.status === "fulfilled") {
           setLastHeard("");
           setStatusText("J'écoute...");
 
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          const stream = await (navigator as any).mediaDevices.getUserMedia({ audio: true });
           const rec = new MediaRecorder(stream);
           const chunks: BlobPart[] = [];
 
-          rec.ondataavailable = (e) => {
+          rec.ondataavailable = (e: any) => {
             if (e.data && e.data.size > 0) chunks.push(e.data);
           };
 
@@ -369,44 +417,37 @@ if (intentRes.status === "fulfilled") {
                 return;
               }
 
-              // ✅ PARALLÈLE : intent audio + stt
-              setStatusText("Compréhension…");
-              const [intentRes, sttRes] = await Promise.allSettled([
-                matchIntentFromBlob(blob, 0.0),
-                sttFromBlob(blob),
-              ]);
+              // ✅ AUDIO FIRST (WEB)
+              setStatusText("Compréhension audio…");
+              let audioResp: any = null;
 
-              let audioIntent: string = "UNKNOWN";
-              let audioConf: number = 0;
-
-              if (intentRes.status === "fulfilled") {
-                audioIntent = intentRes.value?.intent ?? "UNKNOWN";
-                audioConf = Number(intentRes.value?.confidence ?? 0);
-                console.log("[AUDIO_INTENT]", audioIntent, audioConf, intentRes.value?.scores);
-              } else {
-                console.log("[AUDIO_INTENT] error:", intentRes.reason?.message || intentRes.reason);
+              try {
+                audioResp = await matchIntentFromBlob(blob, 0.0);
+                console.log("[AUDIO_INTENT raw]", audioResp);
+              } catch (e: any) {
+                console.log("[AUDIO_INTENT] error:", e?.message || e);
               }
 
-              // ✅ Delta gate: si trop ambigu, on ignore l'intent audio
-if (intentRes.status === "fulfilled") {
-  const scores = intentRes.value?.scores;
-  if (Array.isArray(scores) && scores.length >= 2) {
-    const top = Number(scores[0]?.score ?? 0);
-    const second = Number(scores[1]?.score ?? 0);
-    const delta = top - second;
+              const picked = pickClearAudioIntent(audioResp, 0.18, 0.35);
+              let audioIntent = picked.intent;
 
-    if (delta < 0.18) {
-      console.log("[AUDIO_INTENT] ambiguous delta=", delta, "-> fallback to text");
-      audioIntent = "UNKNOWN";
-    }
-  }
-}
-
-              let text = "";
-              if (sttRes.status === "fulfilled") {
-                text = sttRes.value?.text ?? "";
+              if (picked.delta != null) {
+                console.log("[AUDIO_INTENT] picked=", audioIntent, "conf=", picked.confidence, "delta=", picked.delta, "clear=", picked.isClear);
               } else {
-                console.log("[STT] error:", sttRes.reason?.message || sttRes.reason);
+                console.log("[AUDIO_INTENT] picked=", audioIntent, "conf=", picked.confidence, "clear=", picked.isClear);
+              }
+
+              // ✅ STT seulement si audio pas clair
+              let text = "";
+              if (!picked.isClear) {
+                setStatusText("Reconnaissance…");
+                try {
+                  const stt = await sttFromBlob(blob);
+                  text = stt?.text ?? "";
+                } catch (e: any) {
+                  console.log("[STT] error:", e?.message || e);
+                  text = "";
+                }
               }
 
               if (text && text.trim().length >= 2) {
@@ -423,33 +464,15 @@ if (intentRes.status === "fulfilled") {
               setStatusText("Localisation...");
               const { nearLat, nearLng } = await getNearCoordsSafe(8000);
 
-              const finalIntent =
-                audioIntent !== "UNKNOWN"
-                  ? audioIntent
-                  : (routed as any)?.intent ?? "UNKNOWN";
+              const finalIntent = picked.isClear ? audioIntent : (routed as any)?.intent ?? "UNKNOWN";
 
-              if (finalIntent === "PHARMACY_ON_CALL") {
-                await stopAllAudio();
-                navigation.navigate("Results", { queryText: text || "pharmacie de garde", intent: "PHARMACY_ON_CALL", district, nearLat, nearLng });
-                return;
+              const ok = await navigateByIntent(finalIntent, text, district, nearLat, nearLng);
+              if (!ok) {
+                setShowFallback(true);
+                await playUi("fallback_pharmacies_or_retry");
               }
-
-              if (finalIntent === "PHARMACY") {
-                await stopAllAudio();
-                navigation.navigate("Results", { queryText: text || "pharmacie", intent: "PHARMACY", district, nearLat, nearLng });
-                return;
-              }
-
-              if (finalIntent === "CLINIC") {
-                await stopAllAudio();
-                navigation.navigate("Results", { queryText: text || "clinique", intent: "CLINIC", district, nearLat, nearLng });
-                return;
-              }
-
-              setShowFallback(true);
-              await playUi("fallback_pharmacies_or_retry");
             } catch (e: any) {
-              console.error("STT/WEB error:", e?.message || e);
+              console.error("WEB flow error:", e?.message || e);
 
               const msg =
                 e?.name === "AbortError"
@@ -561,7 +584,9 @@ if (intentRes.status === "fulfilled") {
           <Text style={styles.micText}>{recording ? "⏹️" : "🎙️"}</Text>
         </Pressable>
 
-        <Text style={styles.hint}>{recording ? "Enregistrement..." : "Appuie pour parler, puis ré-appuie pour valider."}</Text>
+        <Text style={styles.hint}>
+          {recording ? "Enregistrement..." : "Appuie pour parler, puis ré-appuie pour valider."}
+        </Text>
 
         {statusText ? <Text style={styles.status}>{statusText}</Text> : null}
 
