@@ -15,12 +15,13 @@ export function detectIntent(text: string): Intent {
 
   const hasPharmacy = t.includes("pharmacie") || t.includes("pharmacies");
   const hasClinic =
+    t.includes("urgence") ||
+    t.includes("fievre") || t.includes("fièvre") ||
+    t.includes("mal au ventre") ||
+    t.includes("medecin") || t.includes("médecin") ||
+    t.includes("hopital") || t.includes("hôpital") ||
     t.includes("clinique") ||
-    t.includes("cliniques") ||
-    t.includes("centre de sante") ||
-    t.includes("centre de santé") ||
-    t.includes("hopital") ||
-    t.includes("hôpital");
+    t.includes("centre de sante") || t.includes("centre de santé");
 
   const hasOnCall =
     t.includes("garde") || t.includes("de garde") || t.includes("garda") || t.includes("on call");

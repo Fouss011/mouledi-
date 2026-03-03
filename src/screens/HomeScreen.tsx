@@ -271,7 +271,7 @@ if (intentRes.status === "fulfilled") {
     const second = Number(scores[1]?.score ?? 0);
     const delta = top - second;
 
-    if (delta < 0.15) {
+    if (delta < 0.18) {
       console.log("[AUDIO_INTENT] ambiguous delta=", delta, "-> fallback to text");
       audioIntent = "UNKNOWN";
     }
@@ -395,7 +395,7 @@ if (intentRes.status === "fulfilled") {
     const second = Number(scores[1]?.score ?? 0);
     const delta = top - second;
 
-    if (delta < 0.15) {
+    if (delta < 0.18) {
       console.log("[AUDIO_INTENT] ambiguous delta=", delta, "-> fallback to text");
       audioIntent = "UNKNOWN";
     }
