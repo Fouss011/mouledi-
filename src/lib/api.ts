@@ -208,9 +208,9 @@ export async function searchClinics(
 }
 
 // -----------------
-// ✅ INTENT AUDIO MATCHING (NEW)
+// ✅ INTENT AUDIO MATCHING
 // -----------------
-export async function matchIntentFromAudio(audioUri: string, minConf = 0.35): Promise<IntentMatchResp> {
+export async function matchIntentFromAudio(audioUri: string, minConf = 0.0): Promise<IntentMatchResp> {
   const form = new FormData();
   form.append("file", {
     uri: audioUri,
@@ -232,7 +232,7 @@ export async function matchIntentFromAudio(audioUri: string, minConf = 0.35): Pr
   return await r.json();
 }
 
-export async function matchIntentFromBlob(blob: Blob, minConf = 0.35): Promise<IntentMatchResp> {
+export async function matchIntentFromBlob(blob: Blob, minConf = 0.0): Promise<IntentMatchResp> {
   const form = new FormData();
   form.append("file", blob, "intent.webm");
 

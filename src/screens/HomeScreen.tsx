@@ -6,16 +6,7 @@ import * as Location from "expo-location";
 
 import { RootStackParamList } from "../../App";
 import { routeQuery } from "../lib/nlu";
-import {
-  pingBackend,
-  pingStt,
-  sttFromAudio,
-  sttFromBlob,
-  matchIntentFromAudio,
-  matchIntentFromBlob,
-  BASE_URL,
-  STT_URL,
-} from "../lib/api";
+import { pingBackend, pingStt, sttFromAudio, sttFromBlob, matchIntentFromAudio, matchIntentFromBlob, BASE_URL, STT_URL } from "../lib/api";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Home">;
 
@@ -256,7 +247,7 @@ export default function HomeScreen({ navigation }: Props) {
     setStatusText("Compréhension…");
 
     const [intentRes, sttRes] = await Promise.allSettled([
-      matchIntentFromAudio(uri, 0.35),
+      matchIntentFromAudio(uri, 0.0),
       sttFromAudio(uri),
     ]);
 
@@ -271,6 +262,21 @@ export default function HomeScreen({ navigation }: Props) {
     } else {
       console.log("[AUDIO_INTENT] error:", intentRes.reason?.message || intentRes.reason);
     }
+
+    // ✅ Delta gate: si trop ambigu, on ignore l'intent audio
+if (intentRes.status === "fulfilled") {
+  const scores = intentRes.value?.scores;
+  if (Array.isArray(scores) && scores.length >= 2) {
+    const top = Number(scores[0]?.score ?? 0);
+    const second = Number(scores[1]?.score ?? 0);
+    const delta = top - second;
+
+    if (delta < 0.15) {
+      console.log("[AUDIO_INTENT] ambiguous delta=", delta, "-> fallback to text");
+      audioIntent = "UNKNOWN";
+    }
+  }
+}
 
     // --------- STT (secondaire) ---------
     let text = "";
@@ -366,7 +372,7 @@ export default function HomeScreen({ navigation }: Props) {
               // ✅ PARALLÈLE : intent audio + stt
               setStatusText("Compréhension…");
               const [intentRes, sttRes] = await Promise.allSettled([
-                matchIntentFromBlob(blob, 0.35),
+                matchIntentFromBlob(blob, 0.0),
                 sttFromBlob(blob),
               ]);
 
@@ -380,6 +386,21 @@ export default function HomeScreen({ navigation }: Props) {
               } else {
                 console.log("[AUDIO_INTENT] error:", intentRes.reason?.message || intentRes.reason);
               }
+
+              // ✅ Delta gate: si trop ambigu, on ignore l'intent audio
+if (intentRes.status === "fulfilled") {
+  const scores = intentRes.value?.scores;
+  if (Array.isArray(scores) && scores.length >= 2) {
+    const top = Number(scores[0]?.score ?? 0);
+    const second = Number(scores[1]?.score ?? 0);
+    const delta = top - second;
+
+    if (delta < 0.15) {
+      console.log("[AUDIO_INTENT] ambiguous delta=", delta, "-> fallback to text");
+      audioIntent = "UNKNOWN";
+    }
+  }
+}
 
               let text = "";
               if (sttRes.status === "fulfilled") {
