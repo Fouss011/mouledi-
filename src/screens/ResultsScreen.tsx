@@ -1,3 +1,4 @@
+// src/screens/ResultsScreen.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, Pressable, FlatList, Linking, Platform } from "react-native";
 import * as Speech from "expo-speech";
@@ -16,6 +17,9 @@ import {
   pingBackend,
   pingStt,
   BASE_URL,
+  // ✅ intent-audio
+  matchIntentFromAudio,
+  matchIntentFromBlob,
 } from "../lib/api";
 import { routeQuery } from "../lib/nlu";
 
@@ -87,7 +91,7 @@ async function playUi(key: string, lang: string = "mina") {
 /** ✅ Localisation robuste (web + mobile) */
 async function getNearCoordsSafe(timeoutMs = 8000): Promise<{ nearLat: number | null; nearLng: number | null }> {
   // WEB
-  if (Platform.OS === "web" && typeof navigator !== "undefined" && navigator.geolocation) {
+  if (Platform.OS === "web" && typeof navigator !== "undefined" && (navigator as any).geolocation) {
     return await new Promise((resolve) => {
       let done = false;
 
@@ -97,8 +101,8 @@ async function getNearCoordsSafe(timeoutMs = 8000): Promise<{ nearLat: number | 
         resolve({ nearLat: null, nearLng: null });
       }, timeoutMs);
 
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
+      (navigator as any).geolocation.getCurrentPosition(
+        (pos: any) => {
           if (done) return;
           done = true;
           clearTimeout(timer);
@@ -130,6 +134,46 @@ async function getNearCoordsSafe(timeoutMs = 8000): Promise<{ nearLat: number | 
   } catch {
     return { nearLat: null, nearLng: null };
   }
+}
+
+/** ✅ INTENT AUDIO helpers */
+type AudioIntentResp = {
+  intent: string;
+  confidence: number;
+  scores?: Array<{ intent: string; score: number; n?: number }>;
+};
+
+function normalizeIntent(i: string): "PHARMACY" | "CLINIC" | "PHARMACY_ON_CALL" | "UNKNOWN" {
+  const x = (i || "").toUpperCase().trim();
+  if (x === "PHARMACY") return "PHARMACY";
+  if (x === "CLINIC") return "CLINIC";
+  if (x === "PHARMACY_ON_CALL") return "PHARMACY_ON_CALL";
+  return "UNKNOWN";
+}
+
+function pickClearAudioIntent(
+  resp: AudioIntentResp | null,
+  opts?: { minConf?: number; minDelta?: number }
+): { intent: "PHARMACY" | "CLINIC" | "PHARMACY_ON_CALL" | "UNKNOWN"; conf: number } {
+  const minConf = opts?.minConf ?? 0.62;
+  const minDelta = opts?.minDelta ?? 0.08;
+
+  if (!resp) return { intent: "UNKNOWN", conf: 0 };
+
+  const scores = Array.isArray(resp.scores) ? resp.scores : [];
+  const top1 = scores[0];
+  const top2 = scores[1];
+
+  // ✅ on se base sur scores même si resp.intent == UNKNOWN
+  const bestIntent = (top1?.intent || resp.intent || "UNKNOWN").toUpperCase();
+  const conf = typeof resp.confidence === "number" ? resp.confidence : 0;
+
+  const s1 = typeof top1?.score === "number" ? top1.score : -1;
+  const s2 = typeof top2?.score === "number" ? top2.score : -1;
+  const delta = s1 - s2;
+
+  const isClear = conf >= minConf && delta >= minDelta && bestIntent !== "UNKNOWN";
+  return { intent: isClear ? normalizeIntent(bestIntent) : "UNKNOWN", conf };
 }
 
 export default function ResultsScreen({ navigation, route }: Props) {
@@ -351,6 +395,46 @@ export default function ResultsScreen({ navigation, route }: Props) {
     }
 
     setStatusText("Reconnaissance…");
+
+    // ✅ 1) INTENT AUDIO d'abord (plus fiable que STT)
+    let audioIntent: "PHARMACY" | "CLINIC" | "PHARMACY_ON_CALL" | "UNKNOWN" = "UNKNOWN";
+    try {
+      const resp = (await matchIntentFromAudio(uri)) as AudioIntentResp;
+      audioIntent = pickClearAudioIntent(resp, { minConf: 0.62, minDelta: 0.08 }).intent;
+    } catch {}
+
+    // ✅ coords (si on doit charger liste)
+    let lat = nearLatState;
+    let lng = nearLngState;
+    if (lat == null || lng == null) {
+      setStatusText("Localisation...");
+      const coords = await getNearCoordsSafe(8000);
+      lat = coords.nearLat;
+      lng = coords.nearLng;
+      setNearLatState(lat);
+      setNearLngState(lng);
+    }
+
+    if (audioIntent !== "UNKNOWN") {
+      if (audioIntent === "PHARMACY_ON_CALL") {
+        setStatusText("✅ Pharmacie de garde");
+        await loadData(district, lat, lng, "oncall");
+        return;
+      }
+      if (audioIntent === "CLINIC") {
+        setStatusText("✅ Clinique");
+        await loadData(district, lat, lng, "clinic");
+        return;
+      }
+      if (audioIntent === "PHARMACY") {
+        setStatusText("✅ Pharmacie");
+        await loadData(district, lat, lng, "all");
+        return;
+      }
+    }
+
+    // ✅ 2) Sinon STT (utile pour district + texte)
+    setStatusText("Reconnaissance STT…");
     const { text } = await sttFromAudio(uri);
 
     if (tryHandleVoiceCommand(text)) {
@@ -365,19 +449,6 @@ export default function ResultsScreen({ navigation, route }: Props) {
     }
 
     setStatusText(`Reconnu: ${text}`);
-
-    // ✅ si on n’a pas encore de coords, on tente ici aussi
-    let lat = nearLatState;
-    let lng = nearLngState;
-
-    if (lat == null || lng == null) {
-      setStatusText("Localisation...");
-      const coords = await getNearCoordsSafe(8000);
-      lat = coords.nearLat;
-      lng = coords.nearLng;
-      setNearLatState(lat);
-      setNearLngState(lng);
-    }
 
     const { intent: newIntent, district: newDistrict } = routeQuery(text);
 
@@ -396,8 +467,10 @@ export default function ResultsScreen({ navigation, route }: Props) {
       return;
     }
 
+    // ✅ IMPORTANT: plus de "pharmacies par défaut" quand inconnu
     await playUi("fallback_pharmacies_or_retry");
-    await loadData(null, lat, lng, "all");
+    setStatusText("Je n’ai pas compris. Réessaie: 'moulédji pharmacie' ou 'moulédji clinique'.");
+    return;
   };
 
   const onPressMic = async () => {
@@ -409,7 +482,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
         if (!webRec) {
           setStatusText("J'écoute...");
 
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          const stream = await (navigator as any).mediaDevices.getUserMedia({ audio: true });
           const rec = new MediaRecorder(stream);
           const chunks: BlobPart[] = [];
 
@@ -438,6 +511,46 @@ export default function ResultsScreen({ navigation, route }: Props) {
               }
 
               setStatusText("Reconnaissance…");
+
+              // ✅ 1) INTENT AUDIO d'abord
+              let audioIntent: "PHARMACY" | "CLINIC" | "PHARMACY_ON_CALL" | "UNKNOWN" = "UNKNOWN";
+              try {
+                const resp = (await matchIntentFromBlob(blob)) as AudioIntentResp;
+                audioIntent = pickClearAudioIntent(resp, { minConf: 0.62, minDelta: 0.08 }).intent;
+              } catch {}
+
+              // ✅ coords
+              let lat = nearLatState;
+              let lng = nearLngState;
+              if (lat == null || lng == null) {
+                setStatusText("Localisation...");
+                const coords = await getNearCoordsSafe(8000);
+                lat = coords.nearLat;
+                lng = coords.nearLng;
+                setNearLatState(lat);
+                setNearLngState(lng);
+              }
+
+              if (audioIntent !== "UNKNOWN") {
+                if (audioIntent === "PHARMACY_ON_CALL") {
+                  setStatusText("✅ Pharmacie de garde");
+                  await loadData(district, lat, lng, "oncall");
+                  return;
+                }
+                if (audioIntent === "CLINIC") {
+                  setStatusText("✅ Clinique");
+                  await loadData(district, lat, lng, "clinic");
+                  return;
+                }
+                if (audioIntent === "PHARMACY") {
+                  setStatusText("✅ Pharmacie");
+                  await loadData(district, lat, lng, "all");
+                  return;
+                }
+              }
+
+              // ✅ 2) Sinon STT
+              setStatusText("Reconnaissance STT…");
               const { text } = await sttFromBlob(blob);
 
               if (tryHandleVoiceCommand(text)) {
@@ -452,18 +565,6 @@ export default function ResultsScreen({ navigation, route }: Props) {
               }
 
               setStatusText(`Reconnu: ${text}`);
-
-              let lat = nearLatState;
-              let lng = nearLngState;
-
-              if (lat == null || lng == null) {
-                setStatusText("Localisation...");
-                const coords = await getNearCoordsSafe(8000);
-                lat = coords.nearLat;
-                lng = coords.nearLng;
-                setNearLatState(lat);
-                setNearLngState(lng);
-              }
 
               const { intent: newIntent, district: newDistrict } = routeQuery(text);
 
@@ -483,7 +584,8 @@ export default function ResultsScreen({ navigation, route }: Props) {
               }
 
               await playUi("fallback_pharmacies_or_retry");
-              await loadData(null, lat, lng, "all");
+              setStatusText("Je n’ai pas compris. Réessaie: 'moulédji pharmacie' ou 'moulédji clinique'.");
+              return;
             } catch (e: any) {
               console.error("STT/WEB error:", e?.message || e);
 
@@ -562,11 +664,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
           </Text>
 
           <Text style={styles.subtitle}>
-            {hasCoords
-              ? "Triées par distance (près de vous)"
-              : district
-              ? `Quartier: ${district}`
-              : "Sans localisation (liste générale)"}
+            {hasCoords ? "Triées par distance (près de vous)" : district ? `Quartier: ${district}` : "Sans localisation (liste générale)"}
           </Text>
 
           <Text style={styles.query}>Requête: {queryText}</Text>
@@ -585,26 +683,26 @@ export default function ResultsScreen({ navigation, route }: Props) {
       {!loading && !error ? (
         <FlatList
           data={items}
-          keyExtractor={(it, idx) => `${it.provider_id ?? it.name}-${idx}`}
+          keyExtractor={(it, idx) => `${(it as any).provider_id ?? (it as any).name}-${idx}`}
           contentContainerStyle={{ paddingBottom: 30 }}
           renderItem={({ item }) => {
             const distanceLine = (item as any).distance_km != null ? ` • ${(item as any).distance_km} km` : "";
 
             return (
-              <Pressable onPress={() => speakNameOnly(item.name)} style={styles.card}>
-                <Text style={styles.cardTitle}>{item.name}</Text>
+              <Pressable onPress={() => speakNameOnly((item as any).name)} style={styles.card}>
+                <Text style={styles.cardTitle}>{(item as any).name}</Text>
 
                 <Text style={styles.cardText}>
-                  {item.district ? item.district : ""}
-                  {item.city ? `${item.district ? ", " : ""}${item.city}` : ""}
+                  {(item as any).district ? (item as any).district : ""}
+                  {(item as any).city ? `${(item as any).district ? ", " : ""}${(item as any).city}` : ""}
                   {distanceLine}
                 </Text>
 
-                {item.phone ? (
+                {(item as any).phone ? (
                   <Pressable
                     onPress={async () => {
                       await stopAllAudio();
-                      callPhone(item.phone);
+                      callPhone((item as any).phone);
                     }}
                     style={styles.callBtn}
                   >
