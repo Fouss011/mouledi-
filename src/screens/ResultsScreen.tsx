@@ -1,5 +1,5 @@
 // src/screens/ResultsScreen.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, StyleSheet, Pressable, FlatList, Linking, Platform } from "react-native";
 import * as Speech from "expo-speech";
 import { Audio } from "expo-av";
@@ -164,7 +164,6 @@ function pickClearAudioIntent(
   const top1 = scores[0];
   const top2 = scores[1];
 
-  // ✅ on se base sur scores même si resp.intent == UNKNOWN
   const bestIntent = (top1?.intent || resp.intent || "UNKNOWN").toUpperCase();
   const conf = typeof resp.confidence === "number" ? resp.confidence : 0;
 
@@ -179,7 +178,7 @@ function pickClearAudioIntent(
 export default function ResultsScreen({ navigation, route }: Props) {
   const { district, queryText, nearLat, nearLng, intent } = route.params as any;
 
-  // ✅ coords “vivantes” (si null au départ, on tente d’obtenir la localisation ici)
+  // ✅ coords “vivantes”
   const [nearLatState, setNearLatState] = useState<number | null>(nearLat ?? null);
   const [nearLngState, setNearLngState] = useState<number | null>(nearLng ?? null);
   const hasCoords = nearLatState != null && nearLngState != null;
@@ -196,6 +195,10 @@ export default function ResultsScreen({ navigation, route }: Props) {
   const mode = useMemo(() => {
     return intent === "PHARMACY_ON_CALL" ? "oncall" : intent === "CLINIC" ? "clinic" : "all";
   }, [intent]);
+
+  // ✅ garder la dernière liste “valide” (pour rester stable quand la nouvelle requête échoue)
+  const [lastGoodMode, setLastGoodMode] = useState<"oncall" | "clinic" | "all">(mode);
+  const failCountRef = useRef(0);
 
   useEffect(() => {
     (async () => {
@@ -235,6 +238,10 @@ export default function ResultsScreen({ navigation, route }: Props) {
       setItems(res);
       setLoading(false);
 
+      // ✅ succès → on reset les échecs, et on mémorise le mode
+      setLastGoodMode(modeFinal);
+      failCountRef.current = 0;
+
       if (res.length > 0) {
         await playUi("tap_item_to_listen");
       }
@@ -244,16 +251,31 @@ export default function ResultsScreen({ navigation, route }: Props) {
     }
   };
 
+  // ✅ quand inconnu sur Results: on garde la liste actuelle + audio “je peux proposer pharmacies/cliniques”
+  const handleUnknownQuery = async () => {
+    failCountRef.current += 1;
+
+    if (failCountRef.current === 1) {
+      await playUi("fallback_pharmacies_or_retry");
+      setStatusText("Je n’ai pas compris. Dis 'pharmacie' ou 'clinique'.");
+      return; // on garde la liste
+    }
+
+    // 2e échec
+    await playUi("repeat_please");
+    setStatusText("Je n’ai toujours pas compris. Retour à l’accueil…");
+    await stopAllAudio();
+    navigation.goBack();
+  };
+
   /** ✅ Si pas de coords au départ, Results tente de les récupérer une fois, puis reload */
   useEffect(() => {
     let mounted = true;
 
     (async () => {
       try {
-        // 1) premier load avec ce qu’on a
         await loadData(district, nearLatState, nearLngState, mode);
 
-        // 2) si pas de coords, tentative automatique
         if (mounted && (nearLatState == null || nearLngState == null)) {
           setStatusText("Localisation...");
           const coords = await getNearCoordsSafe(8000);
@@ -262,16 +284,13 @@ export default function ResultsScreen({ navigation, route }: Props) {
           if (coords.nearLat != null && coords.nearLng != null) {
             setNearLatState(coords.nearLat);
             setNearLngState(coords.nearLng);
-            setStatusText(""); // OK
+            setStatusText("");
             await loadData(district, coords.nearLat, coords.nearLng, mode);
           } else {
-            // pas de localisation → on reste en mode général
             setStatusText("Sans localisation (liste générale)");
           }
         }
-      } catch {
-        // déjà géré dans loadData
-      }
+      } catch {}
     })();
 
     return () => {
@@ -348,7 +367,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
       const idx = parseInt(m[2], 10) - 1;
       if (!Number.isNaN(idx) && idx >= 0 && idx < items.length) {
         const target = items[idx];
-        if (target?.phone) callPhone(target.phone);
+        if ((target as any)?.phone) callPhone((target as any).phone);
       }
       return true;
     }
@@ -396,16 +415,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
 
     setStatusText("Reconnaissance…");
 
-    // ✅ 1) INTENT AUDIO d'abord (plus fiable que STT)
-    let audioIntent: "PHARMACY" | "CLINIC" | "PHARMACY_ON_CALL" | "UNKNOWN" = "UNKNOWN";
-    try {
-      const resp = (await matchIntentFromAudio(uri)) as AudioIntentResp;
-      console.log("INTENT_MATCH:", resp);
-      setStatusText(`intent=${resp.intent} conf=${resp.confidence.toFixed(2)}`);
-      audioIntent = pickClearAudioIntent(resp, { minConf: 0.62, minDelta: 0.08 }).intent;
-    } catch {}
-
-    // ✅ coords (si on doit charger liste)
+    // ✅ coords (si on doit charger une liste)
     let lat = nearLatState;
     let lng = nearLngState;
     if (lat == null || lng == null) {
@@ -415,6 +425,15 @@ export default function ResultsScreen({ navigation, route }: Props) {
       lng = coords.nearLng;
       setNearLatState(lat);
       setNearLngState(lng);
+    }
+
+    // ✅ 1) INTENT AUDIO d'abord (FR + MINA, pas besoin de texte)
+    let audioIntent: "PHARMACY" | "CLINIC" | "PHARMACY_ON_CALL" | "UNKNOWN" = "UNKNOWN";
+    try {
+      const resp = (await matchIntentFromAudio(uri)) as AudioIntentResp;
+      audioIntent = pickClearAudioIntent(resp, { minConf: 0.62, minDelta: 0.08 }).intent;
+    } catch (e: any) {
+      // pas bloquant, on tentera STT
     }
 
     if (audioIntent !== "UNKNOWN") {
@@ -435,7 +454,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
       }
     }
 
-    // ✅ 2) Sinon STT (utile pour district + texte)
+    // ✅ 2) Sinon STT (utile pour phrases FR + quartiers)
     setStatusText("Reconnaissance STT…");
     const { text } = await sttFromAudio(uri);
 
@@ -445,8 +464,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
     }
 
     if (!text || text.trim().length < 2) {
-      setStatusText("Répétez");
-      await playUi("repeat_please");
+      await handleUnknownQuery();
       return;
     }
 
@@ -469,9 +487,8 @@ export default function ResultsScreen({ navigation, route }: Props) {
       return;
     }
 
-    // ✅ IMPORTANT: plus de "pharmacies par défaut" quand inconnu
-    await playUi("fallback_pharmacies_or_retry");
-    setStatusText("Je n’ai pas compris. Réessaie: 'moulédji pharmacie' ou 'moulédji clinique'.");
+    // ✅ IMPORTANT: plus de “pharmacies par défaut” en cas d’échec
+    await handleUnknownQuery();
     return;
   };
 
@@ -512,15 +529,6 @@ export default function ResultsScreen({ navigation, route }: Props) {
                 return;
               }
 
-              setStatusText("Reconnaissance…");
-
-              // ✅ 1) INTENT AUDIO d'abord
-              let audioIntent: "PHARMACY" | "CLINIC" | "PHARMACY_ON_CALL" | "UNKNOWN" = "UNKNOWN";
-              try {
-                const resp = (await matchIntentFromBlob(blob)) as AudioIntentResp;
-                audioIntent = pickClearAudioIntent(resp, { minConf: 0.62, minDelta: 0.08 }).intent;
-              } catch {}
-
               // ✅ coords
               let lat = nearLatState;
               let lng = nearLngState;
@@ -532,6 +540,15 @@ export default function ResultsScreen({ navigation, route }: Props) {
                 setNearLatState(lat);
                 setNearLngState(lng);
               }
+
+              setStatusText("Reconnaissance…");
+
+              // ✅ 1) INTENT AUDIO d'abord
+              let audioIntent: "PHARMACY" | "CLINIC" | "PHARMACY_ON_CALL" | "UNKNOWN" = "UNKNOWN";
+              try {
+                const resp = (await matchIntentFromBlob(blob)) as AudioIntentResp;
+                audioIntent = pickClearAudioIntent(resp, { minConf: 0.62, minDelta: 0.08 }).intent;
+              } catch (e: any) {}
 
               if (audioIntent !== "UNKNOWN") {
                 if (audioIntent === "PHARMACY_ON_CALL") {
@@ -561,8 +578,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
               }
 
               if (!text || text.trim().length < 2) {
-                setStatusText("Répétez");
-                await playUi("repeat_please");
+                await handleUnknownQuery();
                 return;
               }
 
@@ -585,26 +601,11 @@ export default function ResultsScreen({ navigation, route }: Props) {
                 return;
               }
 
-              await playUi("fallback_pharmacies_or_retry");
-              setStatusText("Je n’ai pas compris. Réessaie: 'moulédji pharmacie' ou 'moulédji clinique'.");
+              await handleUnknownQuery();
               return;
             } catch (e: any) {
-              console.error("STT/WEB error:", e?.message || e);
-
-              const msgRaw = String(e?.message || "");
-              const msg =
-                msgRaw.startsWith("STT error")
-                  ? "Erreur de reconnaissance vocale (STT)"
-                  : msgRaw.toLowerCase().includes("permission")
-                  ? "Autorisation micro refusée"
-                  : msgRaw.toLowerCase().includes("network") ||
-                    msgRaw.toLowerCase().includes("fetch") ||
-                    msgRaw.toLowerCase().includes("timeout") ||
-                    e?.name === "AbortError"
-                  ? "Problème de connexion / serveur"
-                  : "Erreur pendant l’enregistrement";
-
-              setStatusText(msg);
+              console.error("MIC/WEB error:", e?.message || e);
+              setStatusText("Erreur pendant l’enregistrement");
               await playUi("repeat_please");
             } finally {
               setWebRec(null);
@@ -631,18 +632,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
     } catch (e: any) {
       console.error("MIC flow error:", e?.message || e);
       setRecording(null);
-
-      const msg =
-        String(e?.message || "").toLowerCase().includes("permission")
-          ? "Autorisation micro refusée"
-          : String(e?.message || "").toLowerCase().includes("network") ||
-            String(e?.message || "").toLowerCase().includes("fetch") ||
-            String(e?.message || "").toLowerCase().includes("timeout") ||
-            e?.name === "AbortError"
-          ? "Problème de connexion / serveur"
-          : "Erreur pendant l’enregistrement";
-
-      setStatusText(msg);
+      setStatusText("Erreur pendant l’enregistrement");
       await playUi("repeat_please");
     }
   };
@@ -666,7 +656,11 @@ export default function ResultsScreen({ navigation, route }: Props) {
           </Text>
 
           <Text style={styles.subtitle}>
-            {hasCoords ? "Triées par distance (près de vous)" : district ? `Quartier: ${district}` : "Sans localisation (liste générale)"}
+            {hasCoords
+              ? "Triées par distance (près de vous)"
+              : district
+              ? `Quartier: ${district}`
+              : "Sans localisation (liste générale)"}
           </Text>
 
           <Text style={styles.query}>Requête: {queryText}</Text>
