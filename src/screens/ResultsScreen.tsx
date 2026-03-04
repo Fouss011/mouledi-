@@ -400,6 +400,8 @@ export default function ResultsScreen({ navigation, route }: Props) {
     let audioIntent: "PHARMACY" | "CLINIC" | "PHARMACY_ON_CALL" | "UNKNOWN" = "UNKNOWN";
     try {
       const resp = (await matchIntentFromAudio(uri)) as AudioIntentResp;
+      console.log("INTENT_MATCH:", resp);
+      setStatusText(`intent=${resp.intent} conf=${resp.confidence.toFixed(2)}`);
       audioIntent = pickClearAudioIntent(resp, { minConf: 0.62, minDelta: 0.08 }).intent;
     } catch {}
 
