@@ -1,5 +1,5 @@
 // src/screens/ResultsScreen.tsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, Pressable, FlatList, Linking, Platform } from "react-native";
 import * as Speech from "expo-speech";
 import { Audio } from "expo-av";
@@ -17,7 +17,6 @@ import {
   pingBackend,
   pingStt,
   BASE_URL,
-  // ✅ intent-audio
   matchIntentFromAudio,
   matchIntentFromBlob,
 } from "../lib/api";
@@ -178,7 +177,6 @@ function pickClearAudioIntent(
 export default function ResultsScreen({ navigation, route }: Props) {
   const { district, queryText, nearLat, nearLng, intent } = route.params as any;
 
-  // ✅ coords “vivantes”
   const [nearLatState, setNearLatState] = useState<number | null>(nearLat ?? null);
   const [nearLngState, setNearLngState] = useState<number | null>(nearLng ?? null);
   const hasCoords = nearLatState != null && nearLngState != null;
@@ -191,14 +189,14 @@ export default function ResultsScreen({ navigation, route }: Props) {
   const [statusText, setStatusText] = useState<string>("");
 
   const [webRec, setWebRec] = useState<MediaRecorder | null>(null);
+  const [webStream, setWebStream] = useState<any>(null);
+
+  // ✅ UI listening state (WEB uses webRec, MOBILE uses recording)
+  const isListening = Platform.OS === "web" ? !!webRec : !!recording;
 
   const mode = useMemo(() => {
     return intent === "PHARMACY_ON_CALL" ? "oncall" : intent === "CLINIC" ? "clinic" : "all";
   }, [intent]);
-
-  // ✅ garder la dernière liste “valide” (pour rester stable quand la nouvelle requête échoue)
-  const [lastGoodMode, setLastGoodMode] = useState<"oncall" | "clinic" | "all">(mode);
-  const failCountRef = useRef(0);
 
   useEffect(() => {
     (async () => {
@@ -238,10 +236,6 @@ export default function ResultsScreen({ navigation, route }: Props) {
       setItems(res);
       setLoading(false);
 
-      // ✅ succès → on reset les échecs, et on mémorise le mode
-      setLastGoodMode(modeFinal);
-      failCountRef.current = 0;
-
       if (res.length > 0) {
         await playUi("tap_item_to_listen");
       }
@@ -251,20 +245,18 @@ export default function ResultsScreen({ navigation, route }: Props) {
     }
   };
 
-  // ✅ quand inconnu sur Results: on garde la liste actuelle + audio “je peux proposer pharmacies/cliniques”
+  // ✅ UNKNOWN sur Results => audio + petit délai + retour accueil (anti-confusion)
   const handleUnknownQuery = async () => {
-    // 🔊 audio mina : “dites pharmacie… ou répétez…”
     await playUi("fallback_pharmacies_or_retry");
-
-    // Optionnel: un petit texte (utile pour ceux qui lisent)
     setStatusText("Je n’ai pas compris. Réessaie à l’accueil.");
 
-    // Retour radical accueil
+    // mini délai pour éviter coupure audio quand on quitte l’écran
+    await new Promise((r) => setTimeout(r, 350));
+
     await stopAllAudio();
     navigation.goBack();
   };
 
-  /** ✅ Si pas de coords au départ, Results tente de les récupérer une fois, puis reload */
   useEffect(() => {
     let mounted = true;
 
@@ -293,6 +285,9 @@ export default function ResultsScreen({ navigation, route }: Props) {
       mounted = false;
       Speech.stop();
       stopAllAudio().catch(() => {});
+      try {
+        webStream?.getTracks?.().forEach((t: any) => t.stop());
+      } catch {}
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [district, intent]);
@@ -362,8 +357,8 @@ export default function ResultsScreen({ navigation, route }: Props) {
     if (m?.[2]) {
       const idx = parseInt(m[2], 10) - 1;
       if (!Number.isNaN(idx) && idx >= 0 && idx < items.length) {
-        const target = items[idx];
-        if ((target as any)?.phone) callPhone((target as any).phone);
+        const target = items[idx] as any;
+        if (target?.phone) callPhone(target.phone);
       }
       return true;
     }
@@ -409,9 +404,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
       return;
     }
 
-    setStatusText("Reconnaissance…");
-
-    // ✅ coords (si on doit charger une liste)
+    // coords
     let lat = nearLatState;
     let lng = nearLngState;
     if (lat == null || lng == null) {
@@ -423,14 +416,12 @@ export default function ResultsScreen({ navigation, route }: Props) {
       setNearLngState(lng);
     }
 
-    // ✅ 1) INTENT AUDIO d'abord (FR + MINA, pas besoin de texte)
+    // ✅ 1) INTENT AUDIO d'abord
     let audioIntent: "PHARMACY" | "CLINIC" | "PHARMACY_ON_CALL" | "UNKNOWN" = "UNKNOWN";
     try {
       const resp = (await matchIntentFromAudio(uri)) as AudioIntentResp;
       audioIntent = pickClearAudioIntent(resp, { minConf: 0.62, minDelta: 0.08 }).intent;
-    } catch (e: any) {
-      // pas bloquant, on tentera STT
-    }
+    } catch {}
 
     if (audioIntent !== "UNKNOWN") {
       if (audioIntent === "PHARMACY_ON_CALL") {
@@ -450,7 +441,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
       }
     }
 
-    // ✅ 2) Sinon STT (utile pour phrases FR + quartiers)
+    // ✅ 2) Sinon STT
     setStatusText("Reconnaissance STT…");
     const { text } = await sttFromAudio(uri);
 
@@ -483,9 +474,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
       return;
     }
 
-    // ✅ IMPORTANT: plus de “pharmacies par défaut” en cas d’échec
     await handleUnknownQuery();
-    return;
   };
 
   const onPressMic = async () => {
@@ -495,13 +484,15 @@ export default function ResultsScreen({ navigation, route }: Props) {
       // ✅ WEB
       if (Platform.OS === "web") {
         if (!webRec) {
-          setStatusText("J'écoute...");
+          setStatusText("J'écoute... (clique ⏹️ quand tu as fini)");
 
           const stream = await (navigator as any).mediaDevices.getUserMedia({ audio: true });
+          setWebStream(stream);
+
           const rec = new MediaRecorder(stream);
           const chunks: BlobPart[] = [];
 
-          rec.ondataavailable = (e) => {
+          rec.ondataavailable = (e: any) => {
             if (e.data && e.data.size > 0) chunks.push(e.data);
           };
 
@@ -525,7 +516,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
                 return;
               }
 
-              // ✅ coords
+              // coords
               let lat = nearLatState;
               let lng = nearLngState;
               if (lat == null || lng == null) {
@@ -537,14 +528,12 @@ export default function ResultsScreen({ navigation, route }: Props) {
                 setNearLngState(lng);
               }
 
-              setStatusText("Reconnaissance…");
-
               // ✅ 1) INTENT AUDIO d'abord
               let audioIntent: "PHARMACY" | "CLINIC" | "PHARMACY_ON_CALL" | "UNKNOWN" = "UNKNOWN";
               try {
                 const resp = (await matchIntentFromBlob(blob)) as AudioIntentResp;
                 audioIntent = pickClearAudioIntent(resp, { minConf: 0.62, minDelta: 0.08 }).intent;
-              } catch (e: any) {}
+              } catch {}
 
               if (audioIntent !== "UNKNOWN") {
                 if (audioIntent === "PHARMACY_ON_CALL") {
@@ -598,12 +587,17 @@ export default function ResultsScreen({ navigation, route }: Props) {
               }
 
               await handleUnknownQuery();
-              return;
             } catch (e: any) {
               console.error("MIC/WEB error:", e?.message || e);
               setStatusText("Erreur pendant l’enregistrement");
               await playUi("repeat_please");
             } finally {
+              // ✅ STOP stream tracks (sinon micro reste actif)
+              try {
+                stream.getTracks().forEach((t: any) => t.stop());
+              } catch {}
+              setWebStream(null);
+
               setWebRec(null);
             }
           };
@@ -652,18 +646,14 @@ export default function ResultsScreen({ navigation, route }: Props) {
           </Text>
 
           <Text style={styles.subtitle}>
-            {hasCoords
-              ? "Triées par distance (près de vous)"
-              : district
-              ? `Quartier: ${district}`
-              : "Sans localisation (liste générale)"}
+            {hasCoords ? "Triées par distance (près de vous)" : district ? `Quartier: ${district}` : "Sans localisation (liste générale)"}
           </Text>
 
           <Text style={styles.query}>Requête: {queryText}</Text>
         </View>
 
-        <Pressable onPress={onPressMic} style={[styles.micMini, recording ? styles.micMiniActive : null]}>
-          <Text style={styles.micMiniText}>{recording ? "⏹️" : "🎙️"}</Text>
+        <Pressable onPress={onPressMic} style={[styles.micMini, isListening ? styles.micMiniActive : null]}>
+          <Text style={styles.micMiniText}>{isListening ? "⏹️" : "🎙️"}</Text>
         </Pressable>
       </View>
 

@@ -1,3 +1,4 @@
+// src/screens/HomeScreen.tsx
 import React, { useEffect, useState } from "react";
 import { View, Text, Pressable, StyleSheet, TextInput, Platform } from "react-native";
 import { Audio } from "expo-av";
@@ -43,9 +44,7 @@ async function playUi(key: string, lang: string = "mina") {
   try {
     await stopAllAudio();
 
-    const r = await fetch(
-      `${BASE_URL}/health/ui-audio?key=${encodeURIComponent(key)}&lang=${encodeURIComponent(lang)}`
-    );
+    const r = await fetch(`${BASE_URL}/health/ui-audio?key=${encodeURIComponent(key)}&lang=${encodeURIComponent(lang)}`);
     if (!r.ok) return;
 
     const data = await r.json();
@@ -82,9 +81,7 @@ async function playUi(key: string, lang: string = "mina") {
 }
 
 /** ✅ Localisation robuste (web + mobile) */
-async function getNearCoordsSafe(
-  timeoutMs = 8000
-): Promise<{ nearLat: number | null; nearLng: number | null }> {
+async function getNearCoordsSafe(timeoutMs = 8000): Promise<{ nearLat: number | null; nearLng: number | null }> {
   // WEB
   if (Platform.OS === "web" && typeof navigator !== "undefined" && (navigator as any).geolocation) {
     return await new Promise((resolve) => {
@@ -169,6 +166,11 @@ export default function HomeScreen({ navigation }: Props) {
   // --- WEB recorder ---
   const [webRec, setWebRec] = useState<MediaRecorder | null>(null);
   const [webChunks, setWebChunks] = useState<BlobPart[]>([]);
+  // ✅ IMPORTANT: garder le stream pour le stopper (sinon micro reste actif)
+  const [webStream, setWebStream] = useState<any>(null);
+
+  // ✅ UI listening state (WEB uses webRec, MOBILE uses recording)
+  const isListening = Platform.OS === "web" ? !!webRec : !!recording;
 
   useEffect(() => {
     (async () => {
@@ -186,7 +188,11 @@ export default function HomeScreen({ navigation }: Props) {
     playUi("welcome");
     return () => {
       stopAllAudio().catch(() => {});
+      try {
+        webStream?.getTracks?.().forEach((t: any) => t.stop());
+      } catch {}
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const startRecording = async () => {
@@ -241,40 +247,28 @@ export default function HomeScreen({ navigation }: Props) {
     }
   };
 
-  const navigateByIntent = async (finalIntent: string, text: string, district: string | null, nearLat: number | null, nearLng: number | null) => {
+  const navigateByIntent = async (
+    finalIntent: string,
+    text: string,
+    district: string | null,
+    nearLat: number | null,
+    nearLng: number | null
+  ) => {
     if (finalIntent === "PHARMACY_ON_CALL") {
       await stopAllAudio();
-      navigation.navigate("Results", {
-        queryText: text || "pharmacie de garde",
-        intent: "PHARMACY_ON_CALL",
-        district,
-        nearLat,
-        nearLng,
-      });
+      navigation.navigate("Results", { queryText: text || "pharmacie de garde", intent: "PHARMACY_ON_CALL", district, nearLat, nearLng });
       return true;
     }
 
     if (finalIntent === "PHARMACY") {
       await stopAllAudio();
-      navigation.navigate("Results", {
-        queryText: text || "pharmacie",
-        intent: "PHARMACY",
-        district,
-        nearLat,
-        nearLng,
-      });
+      navigation.navigate("Results", { queryText: text || "pharmacie", intent: "PHARMACY", district, nearLat, nearLng });
       return true;
     }
 
     if (finalIntent === "CLINIC") {
       await stopAllAudio();
-      navigation.navigate("Results", {
-        queryText: text || "clinique",
-        intent: "CLINIC",
-        district,
-        nearLat,
-        nearLng,
-      });
+      navigation.navigate("Results", { queryText: text || "clinique", intent: "CLINIC", district, nearLat, nearLng });
       return true;
     }
 
@@ -387,9 +381,11 @@ export default function HomeScreen({ navigation }: Props) {
         if (!webRec) {
           setShowFallback(false);
           setLastHeard("");
-          setStatusText("J'écoute...");
+          setStatusText("J'écoute... (clique ⏹️ quand tu as fini)");
 
           const stream = await (navigator as any).mediaDevices.getUserMedia({ audio: true });
+          setWebStream(stream);
+
           const rec = new MediaRecorder(stream);
           const chunks: BlobPart[] = [];
 
@@ -430,12 +426,6 @@ export default function HomeScreen({ navigation }: Props) {
 
               const picked = pickClearAudioIntent(audioResp, 0.18, 0.35);
               let audioIntent = picked.intent;
-
-              if (picked.delta != null) {
-                console.log("[AUDIO_INTENT] picked=", audioIntent, "conf=", picked.confidence, "delta=", picked.delta, "clear=", picked.isClear);
-              } else {
-                console.log("[AUDIO_INTENT] picked=", audioIntent, "conf=", picked.confidence, "clear=", picked.isClear);
-              }
 
               // ✅ STT seulement si audio pas clair
               let text = "";
@@ -486,6 +476,12 @@ export default function HomeScreen({ navigation }: Props) {
               setStatusText(msg);
               await playUi("repeat_please");
             } finally {
+              // ✅ STOP stream tracks (sinon micro reste actif)
+              try {
+                stream.getTracks().forEach((t: any) => t.stop());
+              } catch {}
+              setWebStream(null);
+
               setWebRec(null);
               setWebChunks([]);
             }
@@ -580,12 +576,12 @@ export default function HomeScreen({ navigation }: Props) {
       <Text style={{ color: "#444", fontSize: 11, marginTop: 6 }}>STT: {STT_URL}</Text>
 
       <View style={styles.center}>
-        <Pressable style={[styles.micButton, recording ? styles.micActive : null]} onPress={onPressMic}>
-          <Text style={styles.micText}>{recording ? "⏹️" : "🎙️"}</Text>
+        <Pressable style={[styles.micButton, isListening ? styles.micActive : null]} onPress={onPressMic}>
+          <Text style={styles.micText}>{isListening ? "⏹️" : "🎙️"}</Text>
         </Pressable>
 
         <Text style={styles.hint}>
-          {recording ? "Enregistrement..." : "Appuie pour parler, puis ré-appuie pour valider."}
+          {isListening ? "Enregistrement..." : "Appuie pour parler, puis ré-appuie pour valider."}
         </Text>
 
         {statusText ? <Text style={styles.status}>{statusText}</Text> : null}
