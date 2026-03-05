@@ -339,6 +339,11 @@ export default function HomeScreen({ navigation }: Props) {
       setStatusText("Reconnaissance…");
       try {
         const stt = await sttFromAudio(uri);
+        if (text && !text.toLowerCase().includes("moul")) {
+          await playUi("say_mouledi_command");
+          setStatusText("Dis : Moulédji pharmacie ou Moulédji clinique.");
+          return;
+        }
         text = stt?.text ?? "";
       } catch (e: any) {
         console.log("[STT] error:", e?.message || e);
