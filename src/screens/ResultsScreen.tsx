@@ -253,17 +253,13 @@ export default function ResultsScreen({ navigation, route }: Props) {
 
   // ✅ quand inconnu sur Results: on garde la liste actuelle + audio “je peux proposer pharmacies/cliniques”
   const handleUnknownQuery = async () => {
-    failCountRef.current += 1;
+    // 🔊 audio mina : “dites pharmacie… ou répétez…”
+    await playUi("fallback_pharmacies_or_retry");
 
-    if (failCountRef.current === 1) {
-      await playUi("fallback_pharmacies_or_retry");
-      setStatusText("Je n’ai pas compris. Dis 'pharmacie' ou 'clinique'.");
-      return; // on garde la liste
-    }
+    // Optionnel: un petit texte (utile pour ceux qui lisent)
+    setStatusText("Je n’ai pas compris. Réessaie à l’accueil.");
 
-    // 2e échec
-    await playUi("repeat_please");
-    setStatusText("Je n’ai toujours pas compris. Retour à l’accueil…");
+    // Retour radical accueil
     await stopAllAudio();
     navigation.goBack();
   };
