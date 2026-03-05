@@ -1,6 +1,5 @@
 // src/screens/ResultsScreen.tsx
-
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, StyleSheet, Pressable, FlatList, Linking, Platform } from "react-native";
 import * as Speech from "expo-speech";
 import { Audio } from "expo-av";
@@ -18,17 +17,17 @@ import {
   pingBackend,
   pingStt,
   BASE_URL,
+  // ✅ intent-audio
   matchIntentFromAudio,
   matchIntentFromBlob,
 } from "../lib/api";
-
 import { routeQuery } from "../lib/nlu";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Results">;
 
-/* ---------------- AUDIO UI ---------------- */
-
+/** --- UI AUDIO (mina) helper local --- */
 let currentSound: Audio.Sound | null = null;
+let playSeq = 0;
 
 async function stopCurrentSound() {
   try {
@@ -48,384 +47,776 @@ async function stopAllAudio() {
 }
 
 async function playUi(key: string, lang: string = "mina") {
+  const seq = ++playSeq;
+
   try {
     await stopAllAudio();
 
-    const r = await fetch(`${BASE_URL}/health/ui-audio?key=${key}&lang=${lang}`);
+    const r = await fetch(
+      `${BASE_URL}/health/ui-audio?key=${encodeURIComponent(key)}&lang=${encodeURIComponent(lang)}`
+    );
     if (!r.ok) return;
 
     const data = await r.json();
-    const url = data.url;
+    const url = data.url as string;
+    if (!url) return;
+
+    if (seq !== playSeq) return;
+
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+      playsInSilentModeIOS: true,
+      shouldDuckAndroid: true,
+    });
 
     const { sound } = await Audio.Sound.createAsync({ uri: url }, { shouldPlay: true });
+
+    if (seq !== playSeq) {
+      try {
+        await sound.stopAsync();
+        await sound.unloadAsync();
+      } catch {}
+      return;
+    }
+
     currentSound = sound;
 
     sound.setOnPlaybackStatusUpdate((st: any) => {
       if (st?.didJustFinish) {
-        sound.unloadAsync();
-        currentSound = null;
+        sound.unloadAsync().catch(() => {});
+        if (currentSound === sound) currentSound = null;
       }
     });
   } catch {}
 }
 
-/* ---------------- GEO ---------------- */
-
+/** ✅ Localisation robuste (web + mobile) */
 async function getNearCoordsSafe(timeoutMs = 8000): Promise<{ nearLat: number | null; nearLng: number | null }> {
-  if (Platform.OS === "web") {
-    return new Promise((resolve) => {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => resolve({ nearLat: pos.coords.latitude, nearLng: pos.coords.longitude }),
-        () => resolve({ nearLat: null, nearLng: null }),
-        { timeout: timeoutMs }
+  // WEB
+  if (Platform.OS === "web" && typeof navigator !== "undefined" && (navigator as any).geolocation) {
+    return await new Promise((resolve) => {
+      let done = false;
+
+      const timer = setTimeout(() => {
+        if (done) return;
+        done = true;
+        resolve({ nearLat: null, nearLng: null });
+      }, timeoutMs);
+
+      (navigator as any).geolocation.getCurrentPosition(
+        (pos: any) => {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          resolve({ nearLat: pos.coords.latitude, nearLng: pos.coords.longitude });
+        },
+        () => {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          resolve({ nearLat: null, nearLng: null });
+        },
+        { enableHighAccuracy: true, timeout: timeoutMs }
       );
     });
   }
 
+  // MOBILE
   try {
     const perm = await Location.requestForegroundPermissionsAsync();
     if (!perm.granted) return { nearLat: null, nearLng: null };
 
-    const loc = await Location.getCurrentPositionAsync({});
+    const locPromise = Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs));
+
+    const loc = (await Promise.race([locPromise, timeoutPromise])) as any;
+    if (!loc?.coords) return { nearLat: null, nearLng: null };
+
     return { nearLat: loc.coords.latitude, nearLng: loc.coords.longitude };
   } catch {
     return { nearLat: null, nearLng: null };
   }
 }
 
-/* ---------------- COMPONENT ---------------- */
+/** ✅ INTENT AUDIO helpers */
+type AudioIntentResp = {
+  intent: string;
+  confidence: number;
+  scores?: Array<{ intent: string; score: number; n?: number }>;
+};
+
+function normalizeIntent(i: string): "PHARMACY" | "CLINIC" | "PHARMACY_ON_CALL" | "UNKNOWN" {
+  const x = (i || "").toUpperCase().trim();
+  if (x === "PHARMACY") return "PHARMACY";
+  if (x === "CLINIC") return "CLINIC";
+  if (x === "PHARMACY_ON_CALL") return "PHARMACY_ON_CALL";
+  return "UNKNOWN";
+}
+
+/**
+ * On valide l'intent audio seulement si :
+ * - confidence >= minConf
+ * - delta(top1 - top2) >= minDelta
+ */
+function pickClearAudioIntent(
+  resp: AudioIntentResp | null,
+  opts?: { minConf?: number; minDelta?: number }
+): { intent: "PHARMACY" | "CLINIC" | "PHARMACY_ON_CALL" | "UNKNOWN"; conf: number } {
+  const minConf = opts?.minConf ?? 0.62;
+  const minDelta = opts?.minDelta ?? 0.08;
+
+  if (!resp) return { intent: "UNKNOWN", conf: 0 };
+
+  const scores = Array.isArray(resp.scores) ? resp.scores : [];
+  const top1 = scores[0];
+  const top2 = scores[1];
+
+  const bestIntent = (top1?.intent || resp.intent || "UNKNOWN").toUpperCase();
+  const conf = typeof resp.confidence === "number" ? resp.confidence : 0;
+
+  const s1 = typeof top1?.score === "number" ? top1.score : -1;
+  const s2 = typeof top2?.score === "number" ? top2.score : -1;
+  const delta = s1 - s2;
+
+  const isClear = conf >= minConf && delta >= minDelta && bestIntent !== "UNKNOWN";
+  return { intent: isClear ? normalizeIntent(bestIntent) : "UNKNOWN", conf };
+}
 
 export default function ResultsScreen({ navigation, route }: Props) {
   const { district, queryText, nearLat, nearLng, intent } = route.params as any;
 
+  // ✅ coords “vivantes”
+  const [nearLatState, setNearLatState] = useState<number | null>(nearLat ?? null);
+  const [nearLngState, setNearLngState] = useState<number | null>(nearLng ?? null);
+  const hasCoords = nearLatState != null && nearLngState != null;
+
   const [items, setItems] = useState<PharmacyItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [statusText, setStatusText] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [statusText, setStatusText] = useState<string>("");
+
   const [webRec, setWebRec] = useState<MediaRecorder | null>(null);
-  const [webStream, setWebStream] = useState<any>(null);
-
-  /* ----------- NOUVEAU : écran écoute ----------- */
-
-  const [listenOpen, setListenOpen] = useState(false);
-  const [listenHint, setListenHint] = useState("J'écoute...");
-
-  const isListening = Platform.OS === "web" ? !!webRec : !!recording;
 
   const mode = useMemo(() => {
-    if (intent === "PHARMACY_ON_CALL") return "oncall";
-    if (intent === "CLINIC") return "clinic";
-    return "all";
+    return intent === "PHARMACY_ON_CALL" ? "oncall" : intent === "CLINIC" ? "clinic" : "all";
   }, [intent]);
 
-  /* ---------------- DATA ---------------- */
-
-  const loadData = async (district: string | null, lat?: number | null, lng?: number | null, mode?: string) => {
-    setLoading(true);
-
-    let res: PharmacyItem[] = [];
-
-    if (mode === "oncall") {
-      res = await searchPharmaciesOnCall(district, lat ?? undefined, lng ?? undefined);
-    } else if (mode === "clinic") {
-      res = await searchClinics(district, lat ?? undefined, lng ?? undefined);
-    } else {
-      res = await searchPharmacies(district, lat ?? undefined, lng ?? undefined);
-    }
-
-    setItems(res);
-    setLoading(false);
-  };
+  // ✅ pour éviter l'effet "trop radical"
+  const failCountRef = useRef(0);
 
   useEffect(() => {
-    loadData(district, nearLat, nearLng, mode);
+    (async () => {
+      try {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          playsInSilentModeIOS: true,
+          shouldDuckAndroid: true,
+        });
+      } catch {}
+    })();
   }, []);
 
-  /* ---------------- UNKNOWN ---------------- */
+  const loadData = async (d: string | null, lat?: number | null, lng?: number | null, m?: "oncall" | "clinic" | "all") => {
+    setError(null);
+    setLoading(true);
 
-  const handleUnknownQuery = async () => {
-    await playUi("fallback_pharmacies_or_retry");
-    setListenHint("Je n’ai pas compris. Dis pharmacie ou clinique.");
-    setListenOpen(true);
+    const modeFinal = m ?? "all";
+    let res: PharmacyItem[] = [];
+
+    try {
+      if (modeFinal === "oncall") {
+        res = await searchPharmaciesOnCall(d, lat ?? undefined, lng ?? undefined);
+        if (res.length === 0) res = await searchPharmacies(d, lat ?? undefined, lng ?? undefined);
+      } else if (modeFinal === "clinic") {
+        res = await searchClinics(d, lat ?? undefined, lng ?? undefined);
+      } else {
+        res = await searchPharmacies(d, lat ?? undefined, lng ?? undefined);
+      }
+
+      setItems(res);
+      setLoading(false);
+
+      // ✅ succès -> reset fail
+      failCountRef.current = 0;
+
+      if (res.length > 0) {
+        await playUi("tap_item_to_listen");
+      } else {
+        // pas de résultat -> audio guidance
+        await playUi("fallback_pharmacies_or_retry");
+      }
+    } catch (e: any) {
+      setError(e?.message ?? "Erreur inconnue.");
+      setLoading(false);
+    }
   };
 
-  /* ---------------- MOBILE RECORD ---------------- */
+  // ✅ si inconnu sur Results:
+  // - on informe (audio + texte)
+  // - puis on retourne à l'accueil (après un petit délai)
+  const handleUnknownQuery = async () => {
+    failCountRef.current += 1;
+
+    setStatusText("Je n’ai pas compris. Dis : « pharmacie » ou « clinique ».");
+
+    // Audio guidance (mina)
+    await playUi("fallback_pharmacies_or_retry");
+
+    // Option: si trop d’échecs, retour accueil direct
+    // Là on le fait déjà dès le 1er échec (ton souhait: éviter d'induire en erreur)
+    await stopAllAudio();
+    navigation.goBack();
+  };
+
+  /** ✅ Load initial + tentative localisation */
+  useEffect(() => {
+    let mounted = true;
+
+    (async () => {
+      try {
+        await loadData(district, nearLatState, nearLngState, mode);
+
+        // sur web (Netlify), la géoloc peut échouer sans geste utilisateur.
+        // on tente quand même une fois.
+        if (mounted && (nearLatState == null || nearLngState == null)) {
+          const coords = await getNearCoordsSafe(8000);
+          if (!mounted) return;
+
+          if (coords.nearLat != null && coords.nearLng != null) {
+            setNearLatState(coords.nearLat);
+            setNearLngState(coords.nearLng);
+            setStatusText("");
+            await loadData(district, coords.nearLat, coords.nearLng, mode);
+          } else {
+            setStatusText("Localisation inactive (distance indisponible)");
+          }
+        }
+      } catch {}
+    })();
+
+    return () => {
+      mounted = false;
+      Speech.stop();
+      stopAllAudio().catch(() => {});
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [district, intent]);
+
+  const callPhone = async (phone?: string) => {
+    if (!phone) return;
+    const url = `tel:${phone.replace(/\s+/g, "")}`;
+    const can = await Linking.canOpenURL(url);
+    if (can) Linking.openURL(url);
+  };
+
+  const speakNameOnly = async (name: string) => {
+    await stopAllAudio();
+    Speech.speak(name, { language: "fr-FR", rate: 0.95 });
+  };
 
   const startRecording = async () => {
-    setListenHint("J'écoute... Appuie sur STOP quand tu as fini.");
-    setListenOpen(true);
-
     const perm = await Audio.requestPermissionsAsync();
-    if (!perm.granted) return;
+    if (!perm.granted) {
+      setStatusText("Permission micro refusée.");
+      await playUi("repeat_please");
+      return;
+    }
 
     await Audio.setAudioModeAsync({
       allowsRecordingIOS: true,
       playsInSilentModeIOS: true,
+      shouldDuckAndroid: true,
     });
 
     const rec = new Audio.Recording();
-
     await rec.prepareToRecordAsync({
       android: {
         extension: ".m4a",
         outputFormat: Audio.AndroidOutputFormat.MPEG_4,
         audioEncoder: Audio.AndroidAudioEncoder.AAC,
+        sampleRate: 16000,
+        numberOfChannels: 1,
+        bitRate: 24000,
       },
       ios: {
         extension: ".m4a",
         audioQuality: Audio.IOSAudioQuality.LOW,
+        sampleRate: 16000,
+        numberOfChannels: 1,
+        bitRate: 24000,
+        linearPCMBitDepth: 16,
+        linearPCMIsBigEndian: false,
+        linearPCMIsFloat: false,
       },
     } as any);
 
     await rec.startAsync();
     setRecording(rec);
+    setStatusText("J'écoute...");
+  };
+
+  const tryHandleVoiceCommand = (text: string) => {
+    const t = (text || "").toLowerCase();
+
+    if (t.includes("retour") || t.includes("accueil") || t.includes("home")) {
+      navigation.goBack();
+      return true;
+    }
+
+    const m = t.match(/\b(appelle|appeler|call)\s+(\d+)\b/);
+    if (m?.[2]) {
+      const idx = parseInt(m[2], 10) - 1;
+      if (!Number.isNaN(idx) && idx >= 0 && idx < items.length) {
+        const target = items[idx];
+        if (target?.phone) callPhone(target.phone);
+      }
+      return true;
+    }
+
+    return false;
   };
 
   const stopRecordingAndSearch = async (rec: Audio.Recording) => {
+    setStatusText("Traitement...");
     await rec.stopAndUnloadAsync();
+
+    const st = await rec.getStatusAsync();
+    const ms = (st as any)?.durationMillis ?? 0;
+    if (ms < 900) {
+      setRecording(null);
+      setStatusText("Répétez");
+      await playUi("repeat_please");
+      return;
+    }
+
     const uri = rec.getURI();
     setRecording(null);
 
+    if (!uri) {
+      setStatusText("Erreur audio");
+      await playUi("repeat_please");
+      return;
+    }
+
+    // ✅ PRE-WARM
+    setStatusText("Réveil serveur…");
     const okApi = await pingBackend();
     const okStt = await pingStt();
 
-    if (!okApi || !okStt) return;
+    if (!okApi) {
+      setStatusText("Backend indisponible");
+      await playUi("repeat_please");
+      return;
+    }
+    if (!okStt) {
+      setStatusText("Assistance vocale indisponible");
+      await playUi("repeat_please");
+      return;
+    }
 
-    let audioIntent = "UNKNOWN";
+    // coords (si possible)
+    let lat = nearLatState;
+    let lng = nearLngState;
 
+    if (lat == null || lng == null) {
+      const coords = await getNearCoordsSafe(8000);
+      lat = coords.nearLat;
+      lng = coords.nearLng;
+      setNearLatState(lat);
+      setNearLngState(lng);
+    }
+
+    // ✅ 1) INTENT AUDIO d'abord (FR + MINA)
+    setStatusText("Compréhension audio…");
+    let audioIntent: "PHARMACY" | "CLINIC" | "PHARMACY_ON_CALL" | "UNKNOWN" = "UNKNOWN";
     try {
-      const resp = await matchIntentFromAudio(uri!);
-      audioIntent = resp.intent;
+      const resp = (await matchIntentFromAudio(uri)) as AudioIntentResp;
+      audioIntent = pickClearAudioIntent(resp, { minConf: 0.62, minDelta: 0.08 }).intent;
     } catch {}
 
-    if (audioIntent === "PHARMACY") {
-      setListenOpen(false);
-      await loadData(district, nearLat, nearLng, "all");
+    if (audioIntent !== "UNKNOWN") {
+      if (audioIntent === "PHARMACY_ON_CALL") {
+        setStatusText("✅ Pharmacie de garde");
+        await loadData(district, lat, lng, "oncall");
+        return;
+      }
+      if (audioIntent === "CLINIC") {
+        setStatusText("✅ Clinique");
+        await loadData(district, lat, lng, "clinic");
+        return;
+      }
+      if (audioIntent === "PHARMACY") {
+        setStatusText("✅ Pharmacie");
+        await loadData(district, lat, lng, "all");
+        return;
+      }
+    }
+
+    // ✅ 2) Sinon STT (utile pour phrases FR + quartiers)
+    setStatusText("Reconnaissance STT…");
+    const { text } = await sttFromAudio(uri);
+
+    if (tryHandleVoiceCommand(text)) {
+      setStatusText(`Commande: ${text}`);
       return;
     }
 
-    if (audioIntent === "CLINIC") {
-      setListenOpen(false);
-      await loadData(district, nearLat, nearLng, "clinic");
-      return;
-    }
-
-    const { text } = await sttFromAudio(uri!);
-
-    if (text && !text.toLowerCase().includes("moul")) {
-      await playUi("say_mouledi_command");
-      setListenHint("Dis : Moulédji pharmacie ou Moulédji clinique.");
-      setListenOpen(true);
-      return;
-    }
-
-    if (!text) {
+    if (!text || text.trim().length < 2) {
       await handleUnknownQuery();
       return;
     }
 
-    const { intent: newIntent } = routeQuery(text);
+    setStatusText(`Reconnu: ${text}`);
 
-    if (newIntent === "PHARMACY") {
-      setListenOpen(false);
-      await loadData(district, nearLat, nearLng, "all");
+    const { intent: newIntent, district: newDistrict } = routeQuery(text);
+
+    if (newIntent === "PHARMACY_ON_CALL") {
+      await loadData(newDistrict, lat, lng, "oncall");
       return;
     }
-
+    if (newIntent === "PHARMACY") {
+      await loadData(newDistrict, lat, lng, "all");
+      return;
+    }
     if (newIntent === "CLINIC") {
-      setListenOpen(false);
-      await loadData(district, nearLat, nearLng, "clinic");
+      await loadData(newDistrict, lat, lng, "clinic");
       return;
     }
 
     await handleUnknownQuery();
   };
 
-  /* ---------------- MICRO ---------------- */
-
   const onPressMic = async () => {
-    await stopAllAudio();
+    try {
+      await stopAllAudio();
 
-    if (Platform.OS === "web") {
-      if (!webRec) {
-        setListenHint("J'écoute... Appuie sur STOP quand tu as fini.");
-        setListenOpen(true);
+      // ✅ WEB
+      if (Platform.OS === "web") {
+        if (!webRec) {
+          setStatusText("J'écoute...");
 
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        setWebStream(stream);
+          const stream = await (navigator as any).mediaDevices.getUserMedia({ audio: true });
+          const rec = new MediaRecorder(stream);
+          const chunks: BlobPart[] = [];
 
-        const rec = new MediaRecorder(stream);
-        const chunks: BlobPart[] = [];
+          rec.ondataavailable = (e: any) => {
+            if (e.data && e.data.size > 0) chunks.push(e.data);
+          };
 
-        rec.ondataavailable = (e) => chunks.push(e.data);
+          rec.onstop = async () => {
+            try {
+              setStatusText("Traitement...");
+              const blob = new Blob(chunks, { type: "audio/webm" });
 
-        rec.onstop = async () => {
-          const blob = new Blob(chunks, { type: "audio/webm" });
+              setStatusText("Réveil serveur…");
+              const okApi = await pingBackend();
+              const okStt = await pingStt();
 
-          let intent = "UNKNOWN";
+              if (!okApi) {
+                setStatusText("Backend indisponible");
+                await playUi("repeat_please");
+                return;
+              }
+              if (!okStt) {
+                setStatusText("Assistance vocale indisponible");
+                await playUi("repeat_please");
+                return;
+              }
 
-          try {
-            const r = await matchIntentFromBlob(blob);
-            intent = r.intent;
-          } catch {}
+              // coords (⚠️ sur web il faut souvent un geste utilisateur -> ici on est OK)
+              let lat = nearLatState;
+              let lng = nearLngState;
+              if (lat == null || lng == null) {
+                const coords = await getNearCoordsSafe(8000);
+                lat = coords.nearLat;
+                lng = coords.nearLng;
+                setNearLatState(lat);
+                setNearLngState(lng);
+              }
 
-          if (intent === "PHARMACY") {
-            setListenOpen(false);
-            await loadData(district, nearLat, nearLng, "all");
-            return;
-          }
+              // ✅ 1) INTENT AUDIO
+              setStatusText("Compréhension audio…");
+              let audioIntent: "PHARMACY" | "CLINIC" | "PHARMACY_ON_CALL" | "UNKNOWN" = "UNKNOWN";
+              try {
+                const resp = (await matchIntentFromBlob(blob)) as AudioIntentResp;
+                audioIntent = pickClearAudioIntent(resp, { minConf: 0.62, minDelta: 0.08 }).intent;
+              } catch {}
 
-          if (intent === "CLINIC") {
-            setListenOpen(false);
-            await loadData(district, nearLat, nearLng, "clinic");
-            return;
-          }
+              if (audioIntent !== "UNKNOWN") {
+                if (audioIntent === "PHARMACY_ON_CALL") {
+                  setStatusText("✅ Pharmacie de garde");
+                  await loadData(district, lat, lng, "oncall");
+                  return;
+                }
+                if (audioIntent === "CLINIC") {
+                  setStatusText("✅ Clinique");
+                  await loadData(district, lat, lng, "clinic");
+                  return;
+                }
+                if (audioIntent === "PHARMACY") {
+                  setStatusText("✅ Pharmacie");
+                  await loadData(district, lat, lng, "all");
+                  return;
+                }
+              }
 
-          await handleUnknownQuery();
-        };
+              // ✅ 2) Sinon STT
+              setStatusText("Reconnaissance STT…");
+              const { text } = await sttFromBlob(blob);
 
-        rec.start();
-        setWebRec(rec);
-      } else {
-        webRec.stop();
-        webStream?.getTracks().forEach((t: any) => t.stop());
-        setWebRec(null);
+              if (tryHandleVoiceCommand(text)) {
+                setStatusText(`Commande: ${text}`);
+                return;
+              }
+
+              if (!text || text.trim().length < 2) {
+                await handleUnknownQuery();
+                return;
+              }
+
+              setStatusText(`Reconnu: ${text}`);
+
+              const { intent: newIntent, district: newDistrict } = routeQuery(text);
+
+              if (newIntent === "PHARMACY_ON_CALL") {
+                await loadData(newDistrict, lat, lng, "oncall");
+                return;
+              }
+              if (newIntent === "PHARMACY") {
+                await loadData(newDistrict, lat, lng, "all");
+                return;
+              }
+              if (newIntent === "CLINIC") {
+                await loadData(newDistrict, lat, lng, "clinic");
+                return;
+              }
+
+              await handleUnknownQuery();
+            } catch (e: any) {
+              console.error("MIC/WEB error:", e?.message || e);
+              setStatusText("Erreur pendant l’enregistrement");
+              await playUi("repeat_please");
+            } finally {
+              setWebRec(null);
+            }
+          };
+
+          rec.start();
+          setWebRec(rec);
+          return;
+        } else {
+          setStatusText("Traitement...");
+          webRec.stop();
+          setWebRec(null);
+          return;
+        }
       }
 
-      return;
-    }
-
-    if (recording) {
-      await stopRecordingAndSearch(recording);
-    } else {
-      await startRecording();
+      // ✅ MOBILE
+      if (recording) {
+        await stopRecordingAndSearch(recording);
+      } else {
+        await startRecording();
+      }
+    } catch (e: any) {
+      console.error("MIC flow error:", e?.message || e);
+      setRecording(null);
+      setStatusText("Erreur pendant l’enregistrement");
+      await playUi("repeat_please");
     }
   };
 
-  /* ---------------- UI ---------------- */
+  const requestGeoAndReload = async () => {
+    setStatusText("Localisation...");
+    const coords = await getNearCoordsSafe(8000);
+
+    if (coords.nearLat != null && coords.nearLng != null) {
+      setNearLatState(coords.nearLat);
+      setNearLngState(coords.nearLng);
+      setStatusText("");
+      await loadData(district, coords.nearLat, coords.nearLng, mode);
+    } else {
+      setStatusText("Localisation refusée (distance indisponible)");
+      await playUi("fallback_pharmacies_or_retry");
+    }
+  };
 
   return (
     <View style={styles.container}>
-      {/* HEADER */}
-
       <View style={styles.header}>
-        <Pressable onPress={() => navigation.goBack()}>
-          <Text style={styles.back}>←</Text>
+        <Pressable
+          onPress={async () => {
+            await stopAllAudio();
+            navigation.goBack();
+          }}
+          style={styles.backBtn}
+        >
+          <Text style={styles.backText}>←</Text>
         </Pressable>
 
-        <Text style={styles.title}>
-          {intent === "CLINIC" ? "Cliniques" : "Pharmacies"}
-        </Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title}>
+            {intent === "CLINIC" ? "Cliniques" : intent === "PHARMACY_ON_CALL" ? "Pharmacies de garde" : "Pharmacies"}
+          </Text>
 
-        <Pressable onPress={onPressMic}>
-          <Text style={styles.mic}>🎙️</Text>
+          <Text style={styles.subtitle}>
+            {hasCoords ? "Triées par distance (près de vous)" : district ? `Quartier: ${district}` : "Sans localisation"}
+          </Text>
+
+          <Text style={styles.query}>Requête: {queryText}</Text>
+        </View>
+
+        <Pressable onPress={onPressMic} style={[styles.micMini, recording ? styles.micMiniActive : null]}>
+          <Text style={styles.micMiniText}>{recording ? "⏹️" : "🎙️"}</Text>
         </Pressable>
       </View>
 
-      {loading ? (
-        <Text style={styles.loading}>Chargement...</Text>
-      ) : (
+      {statusText ? <Text style={styles.status}>{statusText}</Text> : null}
+
+      {/* ✅ IMPORTANT: sur Netlify/web, la géoloc peut rester null tant que l’utilisateur ne clique pas.
+          Donc on affiche un bloc qui force un geste utilisateur -> permission -> distance OK.
+      */}
+      {!hasCoords ? (
+        <View style={styles.geoBox}>
+          <Text style={styles.geoText}>Active la localisation pour voir la distance et le tri près de toi.</Text>
+          <Pressable onPress={requestGeoAndReload} style={styles.geoBtn}>
+            <Text style={styles.geoBtnText}>Activer</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {loading ? <Text style={styles.loading}>Chargement...</Text> : null}
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+
+      {!loading && !error ? (
         <FlatList
           data={items}
-          keyExtractor={(it, i) => i.toString()}
-          renderItem={({ item }) => (
-            <Pressable style={styles.card}>
-              <Text style={styles.name}>{item.name}</Text>
-              <Text style={styles.city}>{item.city}</Text>
-            </Pressable>
-          )}
+          keyExtractor={(it, idx) => `${it.provider_id ?? it.name}-${idx}`}
+          contentContainerStyle={{ paddingBottom: 30 }}
+          renderItem={({ item }) => {
+            const distanceLine =
+              item.distance_km != null
+                ? ` • ${item.distance_km} km`
+                : hasCoords
+                ? " • …"
+                : ""; // pas de coords -> rien
+
+            return (
+              <Pressable onPress={() => speakNameOnly(item.name)} style={styles.card}>
+                <Text style={styles.cardTitle}>{item.name}</Text>
+
+                <Text style={styles.cardText}>
+                  {item.district ? item.district : "—"}
+                  {item.city ? `, ${item.city}` : ""}
+                  {distanceLine}
+                </Text>
+
+                {item.phone ? <Text style={styles.cardSub}>📞 {item.phone}</Text> : null}
+
+                {item.phone ? (
+                  <Pressable
+                    onPress={async () => {
+                      await stopAllAudio();
+                      callPhone(item.phone);
+                    }}
+                    style={styles.callBtn}
+                  >
+                    <Text style={styles.callText}>Appeler</Text>
+                  </Pressable>
+                ) : (
+                  <Text style={styles.cardMuted}>Téléphone indisponible</Text>
+                )}
+              </Pressable>
+            );
+          }}
+          ListEmptyComponent={<Text style={styles.loading}>Aucun résultat.</Text>}
         />
-      )}
-
-      {/* ----------- OVERLAY ÉCOUTE ----------- */}
-
-      {listenOpen && (
-        <View style={styles.listenOverlay}>
-          <Text style={styles.listenTitle}>{listenHint}</Text>
-
-          <Pressable style={styles.stopBtn} onPress={onPressMic}>
-            <Text style={styles.stopText}>⏹️ STOP</Text>
-          </Pressable>
-
-          <Text style={styles.listenSub}>
-            Dis : moulédji pharmacie ou moulédji clinique
-          </Text>
-        </View>
-      )}
+      ) : null}
     </View>
   );
 }
 
-/* ---------------- STYLE ---------------- */
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#000" },
+  container: { flex: 1, backgroundColor: "#000", paddingTop: 54, paddingHorizontal: 16 },
 
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    padding: 16,
+  header: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 10 },
+
+  backBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "#111",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#222",
+  },
+  backText: { color: "#fff", fontSize: 20 },
+
+  title: { color: "#fff", fontSize: 18, fontWeight: "800" },
+  subtitle: { color: "#aaa", marginTop: 2 },
+  query: { color: "#666", marginTop: 6, fontSize: 12 },
+
+  micMini: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "#111",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#222",
+  },
+  micMiniActive: { borderColor: "#555" },
+  micMiniText: { color: "#fff", fontSize: 18 },
+
+  status: { color: "#bbb", textAlign: "center", marginTop: 6 },
+
+  geoBox: {
+    marginTop: 8,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#222",
+    backgroundColor: "#0b0b0b",
+  },
+  geoText: { color: "#bbb", fontSize: 13, marginBottom: 10 },
+  geoBtn: {
+    backgroundColor: "#111",
+    borderColor: "#333",
+    borderWidth: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
     alignItems: "center",
   },
+  geoBtnText: { color: "#fff", fontWeight: "700" },
 
-  back: { color: "#fff", fontSize: 22 },
-
-  title: { color: "#fff", fontSize: 18, fontWeight: "bold" },
-
-  mic: { color: "#fff", fontSize: 22 },
-
-  loading: { color: "#fff", textAlign: "center", marginTop: 30 },
+  loading: { color: "#bbb", marginTop: 18, textAlign: "center" },
+  error: { color: "#ff8a8a", marginTop: 12, textAlign: "center" },
 
   card: {
+    backgroundColor: "#0b0b0b",
+    borderColor: "#222",
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+  },
+  cardTitle: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  cardText: { color: "#bbb", marginTop: 6 },
+  cardSub: { color: "#888", marginTop: 6, fontSize: 13 },
+  cardMuted: { color: "#666", marginTop: 10 },
+
+  callBtn: {
+    marginTop: 10,
     backgroundColor: "#111",
-    padding: 16,
-    margin: 10,
-    borderRadius: 10,
-  },
-
-  name: { color: "#fff", fontSize: 16 },
-
-  city: { color: "#888" },
-
-  /* ---------- LISTEN OVERLAY ---------- */
-
-  listenOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "#000",
+    borderColor: "#333",
+    borderWidth: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
     alignItems: "center",
-    justifyContent: "center",
   },
-
-  listenTitle: {
-    color: "#fff",
-    fontSize: 18,
-    marginBottom: 30,
-  },
-
-  stopBtn: {
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: "#111",
-    borderWidth: 2,
-    borderColor: "#444",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  stopText: {
-    color: "#fff",
-    fontSize: 22,
-    fontWeight: "bold",
-  },
-
-  listenSub: {
-    color: "#888",
-    marginTop: 30,
-  },
+  callText: { color: "#fff", fontWeight: "700" },
 });

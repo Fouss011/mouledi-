@@ -1,5 +1,4 @@
-// src/screens/HomeScreen.tsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, Pressable, StyleSheet, TextInput, Platform } from "react-native";
 import { Audio } from "expo-av";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -22,7 +21,7 @@ type Props = NativeStackScreenProps<RootStackParamList, "Home">;
 
 /** --- UI AUDIO (mina) helper local --- */
 let currentSound: Audio.Sound | null = null;
-let playSeq = 0; // ✅ empêche les playUi concurrents
+let playSeq = 0; // empêche les playUi concurrents
 
 async function stopCurrentSound() {
   try {
@@ -38,9 +37,18 @@ async function stopAllAudio() {
   await stopCurrentSound();
 }
 
+async function setPlaybackMode() {
+  try {
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+      playsInSilentModeIOS: true,
+      shouldDuckAndroid: true,
+    });
+  } catch {}
+}
+
 async function playUi(key: string, lang: string = "mina") {
   const seq = ++playSeq;
-
   try {
     await stopAllAudio();
 
@@ -53,11 +61,7 @@ async function playUi(key: string, lang: string = "mina") {
 
     if (seq !== playSeq) return;
 
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: false,
-      playsInSilentModeIOS: true,
-      shouldDuckAndroid: true,
-    });
+    await setPlaybackMode();
 
     const { sound } = await Audio.Sound.createAsync({ uri: url }, { shouldPlay: true });
 
@@ -160,45 +164,38 @@ export default function HomeScreen({ navigation }: Props) {
   const [typed, setTyped] = useState<string>("pharmacie");
 
   // fallback UI (si intent UNKNOWN)
-  const [lastHeard, setLastHeard] = useState<string>("");
   const [showFallback, setShowFallback] = useState<boolean>(false);
 
-  // --- WEB recorder ---
+  // WEB recorder
   const [webRec, setWebRec] = useState<MediaRecorder | null>(null);
-  const [webChunks, setWebChunks] = useState<BlobPart[]>([]);
-  // ✅ IMPORTANT: garder le stream pour le stopper (sinon micro reste actif)
-  const [webStream, setWebStream] = useState<any>(null);
 
-  // ✅ UI listening state (WEB uses webRec, MOBILE uses recording)
-  const isListening = Platform.OS === "web" ? !!webRec : !!recording;
+  // ✅ UI: listening state correct (mobile + web)
+  const isListening = useMemo(() => recording != null || webRec != null, [recording, webRec]);
+
+  // anti spam “astuce” (pas obligé)
+  const lastCoachRef = useRef<number>(0);
+  const maybeCoachWakeWord = async () => {
+    const now = Date.now();
+    if (now - lastCoachRef.current < 45_000) return; // max 1 fois / 45s
+    lastCoachRef.current = now;
+    // mets un audio mina si tu veux: "Astuce: dis Moulédji pharmacie..."
+    // await playUi("say_mouledi_command");
+  };
 
   useEffect(() => {
-    (async () => {
-      try {
-        await Audio.setAudioModeAsync({
-          allowsRecordingIOS: false,
-          playsInSilentModeIOS: true,
-          shouldDuckAndroid: true,
-        });
-      } catch {}
-    })();
+    setPlaybackMode().catch(() => {});
   }, []);
 
   useEffect(() => {
     playUi("welcome");
     return () => {
       stopAllAudio().catch(() => {});
-      try {
-        webStream?.getTracks?.().forEach((t: any) => t.stop());
-      } catch {}
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const startRecording = async () => {
     try {
       setShowFallback(false);
-      setLastHeard("");
       setStatusText("J'écoute...");
 
       const perm = await Audio.requestPermissionsAsync();
@@ -256,48 +253,94 @@ export default function HomeScreen({ navigation }: Props) {
   ) => {
     if (finalIntent === "PHARMACY_ON_CALL") {
       await stopAllAudio();
-      navigation.navigate("Results", { queryText: text || "pharmacie de garde", intent: "PHARMACY_ON_CALL", district, nearLat, nearLng });
+      navigation.navigate("Results", {
+        queryText: text || "pharmacie de garde",
+        intent: "PHARMACY_ON_CALL",
+        district,
+        nearLat,
+        nearLng,
+      });
       return true;
     }
 
     if (finalIntent === "PHARMACY") {
       await stopAllAudio();
-      navigation.navigate("Results", { queryText: text || "pharmacie", intent: "PHARMACY", district, nearLat, nearLng });
+      navigation.navigate("Results", {
+        queryText: text || "pharmacie",
+        intent: "PHARMACY",
+        district,
+        nearLat,
+        nearLng,
+      });
       return true;
     }
 
     if (finalIntent === "CLINIC") {
       await stopAllAudio();
-      navigation.navigate("Results", { queryText: text || "clinique", intent: "CLINIC", district, nearLat, nearLng });
+      navigation.navigate("Results", {
+        queryText: text || "clinique",
+        intent: "CLINIC",
+        district,
+        nearLat,
+        nearLng,
+      });
       return true;
     }
 
     return false;
   };
 
+  // ✅ fallback soft (icônes) -> aucun texte obligatoire
+  const openPharmacies = async () => {
+    setShowFallback(false);
+    setStatusText("Localisation...");
+    const { nearLat, nearLng } = await getNearCoordsSafe(8000);
+    navigation.navigate("Results", {
+      queryText: "pharmacie",
+      intent: "PHARMACY",
+      district: null,
+      nearLat,
+      nearLng,
+    });
+  };
+
+  const openClinics = async () => {
+    setShowFallback(false);
+    setStatusText("Localisation...");
+    const { nearLat, nearLng } = await getNearCoordsSafe(8000);
+    navigation.navigate("Results", {
+      queryText: "clinique",
+      intent: "CLINIC",
+      district: null,
+      nearLat,
+      nearLng,
+    });
+  };
+
   const stopRecordingAndProcess = async (rec: Audio.Recording) => {
     setStatusText("Traitement...");
     await rec.stopAndUnloadAsync();
+    setRecording(null);
+
+    // ✅ IMPORTANT: remettre mode playback sinon TTS/UI audio peut être muet
+    await setPlaybackMode();
 
     const st = await rec.getStatusAsync();
     const ms = (st as any)?.durationMillis ?? 0;
     if (ms < 900) {
-      setRecording(null);
       setStatusText("Répétez");
       await playUi("repeat_please");
       return;
     }
 
     const uri = rec.getURI();
-    setRecording(null);
-
     if (!uri) {
       setStatusText("Erreur audio");
       await playUi("repeat_please");
       return;
     }
 
-    // ✅ PRE-WARM (Fly cold start)
+    // PRE-WARM
     setStatusText("Réveil serveur…");
     const okApi = await pingBackend();
     const okStt = await pingStt();
@@ -313,67 +356,70 @@ export default function HomeScreen({ navigation }: Props) {
       return;
     }
 
-    // ✅ AUDIO FIRST
+    // AUDIO FIRST
     setStatusText("Compréhension audio…");
     let audioResp: any = null;
-
     try {
       audioResp = await matchIntentFromAudio(uri, 0.0);
-      console.log("[AUDIO_INTENT raw]", audioResp);
-    } catch (e: any) {
-      console.log("[AUDIO_INTENT] error:", e?.message || e);
-    }
+    } catch {}
 
     const picked = pickClearAudioIntent(audioResp, 0.18, 0.35);
-    let audioIntent = picked.intent;
+    const audioIntent = picked.intent;
 
-    if (picked.delta != null) {
-      console.log("[AUDIO_INTENT] picked=", audioIntent, "conf=", picked.confidence, "delta=", picked.delta, "clear=", picked.isClear);
-    } else {
-      console.log("[AUDIO_INTENT] picked=", audioIntent, "conf=", picked.confidence, "clear=", picked.isClear);
-    }
-
-    // ✅ STT seulement si audio pas clair
+    // STT seulement si audio pas clair (pour quartier, etc.)
     let text = "";
     if (!picked.isClear) {
       setStatusText("Reconnaissance…");
       try {
         const stt = await sttFromAudio(uri);
-        if (text && !text.toLowerCase().includes("moul")) {
-          await playUi("say_mouledi_command");
-          setStatusText("Dis : Moulédji pharmacie ou Moulédji clinique.");
-          return;
-        }
         text = stt?.text ?? "";
-      } catch (e: any) {
-        console.log("[STT] error:", e?.message || e);
+      } catch {
         text = "";
       }
     }
 
-    if (text && text.trim().length >= 2) {
-      setLastHeard(text);
-      setStatusText(`Reconnu: ${text}`);
-    } else {
-      setLastHeard("");
-      setStatusText(audioIntent !== "UNKNOWN" ? `Compris (audio): ${audioIntent}` : "Répétez");
-    }
+    // SOFT wake-word: si l’utilisateur dit juste "pharmacie" -> on exécute, mais on coach
+    const t = (text || "").toLowerCase();
+    const hasWake = t.includes("moul");
+    const looksPharmacy = t.includes("pharm") || t.includes("médic") || t.includes("medic");
+    const looksClinic = t.includes("clini") || t.includes("hop") || t.includes("hôp") || t.includes("centre de santé") || t.includes("santé");
+    const looksOnCall = t.includes("garde") || t.includes("urgence");
 
-    // District vient du texte si dispo
+    // district vient du texte si dispo
     const routed = text && text.trim().length >= 2 ? routeQuery(text) : { intent: "UNKNOWN", district: null as any };
     const district = (routed as any)?.district ?? null;
 
-    // Localisation
+    // localisation
     setStatusText("Localisation...");
     const { nearLat, nearLng } = await getNearCoordsSafe(8000);
 
-    // Décision finale
+    // 1) intent audio clair => direct
     const finalIntent = picked.isClear ? audioIntent : (routed as any)?.intent ?? "UNKNOWN";
+
+    // 2) SOFT: si pas clair mais mots FR détectés
+    if (!picked.isClear && finalIntent === "UNKNOWN") {
+      if (looksOnCall) {
+        if (!hasWake) await maybeCoachWakeWord();
+        await navigateByIntent("PHARMACY_ON_CALL", text, district, nearLat, nearLng);
+        return;
+      }
+      if (looksClinic) {
+        if (!hasWake) await maybeCoachWakeWord();
+        await navigateByIntent("CLINIC", text, district, nearLat, nearLng);
+        return;
+      }
+      if (looksPharmacy) {
+        if (!hasWake) await maybeCoachWakeWord();
+        await navigateByIntent("PHARMACY", text, district, nearLat, nearLng);
+        return;
+      }
+    }
 
     const ok = await navigateByIntent(finalIntent, text, district, nearLat, nearLng);
     if (!ok) {
       setShowFallback(true);
       await playUi("fallback_pharmacies_or_retry");
+      setStatusText("Choisis Pharmacie ou Clinique, ou réessaie au micro.");
     }
   };
 
@@ -381,16 +427,13 @@ export default function HomeScreen({ navigation }: Props) {
     try {
       await stopAllAudio();
 
-      // ✅ WEB
+      // WEB
       if (Platform.OS === "web") {
         if (!webRec) {
           setShowFallback(false);
-          setLastHeard("");
-          setStatusText("J'écoute... (clique ⏹️ quand tu as fini)");
+          setStatusText("J'écoute...");
 
           const stream = await (navigator as any).mediaDevices.getUserMedia({ audio: true });
-          setWebStream(stream);
-
           const rec = new MediaRecorder(stream);
           const chunks: BlobPart[] = [];
 
@@ -400,7 +443,9 @@ export default function HomeScreen({ navigation }: Props) {
 
           rec.onstop = async () => {
             try {
+              setWebRec(null);
               setStatusText("Traitement...");
+
               const blob = new Blob(chunks, { type: "audio/webm" });
 
               setStatusText("Réveil serveur…");
@@ -418,40 +463,33 @@ export default function HomeScreen({ navigation }: Props) {
                 return;
               }
 
-              // ✅ AUDIO FIRST (WEB)
+              // AUDIO FIRST
               setStatusText("Compréhension audio…");
               let audioResp: any = null;
-
               try {
                 audioResp = await matchIntentFromBlob(blob, 0.0);
-                console.log("[AUDIO_INTENT raw]", audioResp);
-              } catch (e: any) {
-                console.log("[AUDIO_INTENT] error:", e?.message || e);
-              }
+              } catch {}
 
               const picked = pickClearAudioIntent(audioResp, 0.18, 0.35);
-              let audioIntent = picked.intent;
+              const audioIntent = picked.intent;
 
-              // ✅ STT seulement si audio pas clair
+              // STT seulement si audio pas clair
               let text = "";
               if (!picked.isClear) {
                 setStatusText("Reconnaissance…");
                 try {
                   const stt = await sttFromBlob(blob);
                   text = stt?.text ?? "";
-                } catch (e: any) {
-                  console.log("[STT] error:", e?.message || e);
+                } catch {
                   text = "";
                 }
               }
 
-              if (text && text.trim().length >= 2) {
-                setLastHeard(text);
-                setStatusText(`Reconnu: ${text}`);
-              } else {
-                setLastHeard("");
-                setStatusText(audioIntent !== "UNKNOWN" ? `Compris (audio): ${audioIntent}` : "Répétez");
-              }
+              const t = (text || "").toLowerCase();
+              const hasWake = t.includes("moul");
+              const looksPharmacy = t.includes("pharm") || t.includes("médic") || t.includes("medic");
+              const looksClinic = t.includes("clini") || t.includes("hop") || t.includes("hôp") || t.includes("centre de santé") || t.includes("santé");
+              const looksOnCall = t.includes("garde") || t.includes("urgence");
 
               const routed = text && text.trim().length >= 2 ? routeQuery(text) : { intent: "UNKNOWN", district: null as any };
               const district = (routed as any)?.district ?? null;
@@ -461,90 +499,59 @@ export default function HomeScreen({ navigation }: Props) {
 
               const finalIntent = picked.isClear ? audioIntent : (routed as any)?.intent ?? "UNKNOWN";
 
+              if (!picked.isClear && finalIntent === "UNKNOWN") {
+                if (looksOnCall) {
+                  if (!hasWake) await maybeCoachWakeWord();
+                  await navigateByIntent("PHARMACY_ON_CALL", text, district, nearLat, nearLng);
+                  return;
+                }
+                if (looksClinic) {
+                  if (!hasWake) await maybeCoachWakeWord();
+                  await navigateByIntent("CLINIC", text, district, nearLat, nearLng);
+                  return;
+                }
+                if (looksPharmacy) {
+                  if (!hasWake) await maybeCoachWakeWord();
+                  await navigateByIntent("PHARMACY", text, district, nearLat, nearLng);
+                  return;
+                }
+              }
+
               const ok = await navigateByIntent(finalIntent, text, district, nearLat, nearLng);
               if (!ok) {
                 setShowFallback(true);
                 await playUi("fallback_pharmacies_or_retry");
+                setStatusText("Choisis Pharmacie ou Clinique, ou réessaie au micro.");
               }
             } catch (e: any) {
-              console.error("WEB flow error:", e?.message || e);
-
-              const msg =
-                e?.name === "AbortError"
-                  ? "Le serveur met trop de temps (timeout)"
-                  : String(e?.message || "").includes("STT error")
-                  ? "Erreur de reconnaissance vocale"
-                  : String(e?.message || "").includes("Intent match error")
-                  ? "Erreur de compréhension audio"
-                  : "Problème de connexion / serveur";
-
-              setStatusText(msg);
-              await playUi("repeat_please");
-            } finally {
-              // ✅ STOP stream tracks (sinon micro reste actif)
-              try {
-                stream.getTracks().forEach((t: any) => t.stop());
-              } catch {}
-              setWebStream(null);
-
               setWebRec(null);
-              setWebChunks([]);
+              setStatusText("Erreur connexion / serveur");
+              await playUi("repeat_please");
             }
           };
 
           rec.start();
-          setWebChunks(chunks);
           setWebRec(rec);
           return;
         } else {
           setStatusText("Traitement...");
           webRec.stop();
-          setWebRec(null);
           return;
         }
       }
 
-      // ✅ MOBILE
+      // MOBILE
       if (recording) {
         await stopRecordingAndProcess(recording);
       } else {
         await startRecording();
       }
     } catch (e: any) {
-      console.error("MIC flow error:", e?.message || e);
       setRecording(null);
-
-      const msgRaw = String(e?.message || "");
-      const msg =
-        msgRaw.startsWith("STT error")
-          ? "Erreur de reconnaissance vocale (STT)"
-          : msgRaw.startsWith("Intent match error")
-          ? "Erreur compréhension audio"
-          : msgRaw.toLowerCase().includes("permission")
-          ? "Autorisation micro refusée"
-          : msgRaw.toLowerCase().includes("network") ||
-            msgRaw.toLowerCase().includes("fetch") ||
-            msgRaw.toLowerCase().includes("timeout") ||
-            e?.name === "AbortError"
-          ? "Problème de connexion / serveur"
-          : "Erreur pendant l’enregistrement";
-
-      setStatusText(msg);
+      setWebRec(null);
+      setStatusText("Erreur micro");
       await playUi("repeat_please");
     }
-  };
-
-  const goPharmacies = async () => {
-    setStatusText("Localisation...");
-    const { nearLat, nearLng } = await getNearCoordsSafe(8000);
-
-    navigation.navigate("Results", {
-      queryText: lastHeard || "pharmacie",
-      intent: "PHARMACY",
-      district: null,
-      nearLat,
-      nearLng,
-    });
   };
 
   const onDebugGo = async () => {
@@ -558,12 +565,10 @@ export default function HomeScreen({ navigation }: Props) {
       navigation.navigate("Results", { queryText: typed, intent: "PHARMACY_ON_CALL", district, nearLat, nearLng });
       return;
     }
-
     if (intent === "PHARMACY") {
       navigation.navigate("Results", { queryText: typed, intent: "PHARMACY", district, nearLat, nearLng });
       return;
     }
-
     if (intent === "CLINIC") {
       navigation.navigate("Results", { queryText: typed, intent: "CLINIC", district, nearLat, nearLng });
       return;
@@ -586,21 +591,37 @@ export default function HomeScreen({ navigation }: Props) {
         </Pressable>
 
         <Text style={styles.hint}>
-          {isListening ? "Enregistrement..." : "Appuie pour parler, puis ré-appuie pour valider."}
+          {isListening ? "Enregistrement... (appuie STOP quand tu as fini)" : "Appuie pour parler, puis ré-appuie pour valider."}
         </Text>
+
+        {/* ✅ exemples de commandes (guidance) */}
+        <View style={styles.voiceExamples}>
+          <Text style={styles.voiceTitle}>Dis par exemple :</Text>
+          <Text style={styles.voiceCmd}>• Moulédji pharmacie</Text>
+          <Text style={styles.voiceCmd}>• Moulédji clinique</Text>
+        </View>
 
         {statusText ? <Text style={styles.status}>{statusText}</Text> : null}
 
+        {/* ✅ fallback avec icônes + micro */}
         {showFallback ? (
-          <View style={styles.fallbackBox}>
-            <Text style={styles.fallbackTitle}>Je peux quand même t’aider :</Text>
+          <View style={styles.choiceBox}>
+            <Text style={styles.choiceTitle}>Je peux te proposer :</Text>
 
-            <Pressable onPress={goPharmacies} style={styles.fallbackBtn}>
-              <Text style={styles.fallbackText}>Voir pharmacies</Text>
-            </Pressable>
+            <View style={styles.choiceRow}>
+              <Pressable onPress={openPharmacies} style={styles.choiceCard}>
+                <Text style={styles.choiceIcon}>💊</Text>
+                <Text style={styles.choiceText}>Pharmacies</Text>
+              </Pressable>
 
-            <Pressable onPress={onPressMic} style={[styles.fallbackBtn, { marginTop: 10 }]}>
-              <Text style={styles.fallbackText}>Réessayer au micro</Text>
+              <Pressable onPress={openClinics} style={styles.choiceCard}>
+                <Text style={styles.choiceIcon}>🏥</Text>
+                <Text style={styles.choiceText}>Cliniques</Text>
+              </Pressable>
+            </View>
+
+            <Pressable onPress={onPressMic} style={[styles.choiceMicBtn]}>
+              <Text style={styles.choiceMicText}>Réessayer 🎙️</Text>
             </Pressable>
           </View>
         ) : null}
@@ -650,7 +671,11 @@ const styles = StyleSheet.create({
   hint: { color: "#ddd", textAlign: "center", marginTop: 6 },
   status: { color: "#bbb", textAlign: "center", marginTop: 6 },
 
-  fallbackBox: {
+  voiceExamples: { marginTop: 6, alignItems: "center" },
+  voiceTitle: { color: "#888", fontSize: 13, marginBottom: 4 },
+  voiceCmd: { color: "#fff", fontSize: 15, fontWeight: "600", marginTop: 2 },
+
+  choiceBox: {
     width: "100%",
     marginTop: 10,
     padding: 14,
@@ -659,9 +684,22 @@ const styles = StyleSheet.create({
     borderColor: "#222",
     backgroundColor: "#0b0b0b",
   },
-  fallbackTitle: { color: "#fff", fontWeight: "700", marginBottom: 10 },
-  fallbackBtn: {
-    width: "100%",
+  choiceTitle: { color: "#fff", fontWeight: "800", marginBottom: 10 },
+  choiceRow: { flexDirection: "row", gap: 12 },
+  choiceCard: {
+    flex: 1,
+    backgroundColor: "#111",
+    borderColor: "#222",
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  choiceIcon: { fontSize: 34, marginBottom: 6 },
+  choiceText: { color: "#fff", fontWeight: "800" },
+  choiceMicBtn: {
+    marginTop: 12,
     backgroundColor: "#111",
     borderColor: "#222",
     borderWidth: 1,
@@ -669,7 +707,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     alignItems: "center",
   },
-  fallbackText: { color: "#fff", fontWeight: "700" },
+  choiceMicText: { color: "#fff", fontWeight: "800" },
 
   debugToggle: {
     marginTop: 8,
