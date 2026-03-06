@@ -6,7 +6,7 @@ import HomeScreen from "./src/screens/HomeScreen";
 import ResultsScreen from "./src/screens/ResultsScreen";
 
 export type RootStackParamList = {
-  Home: undefined;
+  Home: { autoStartMic?: boolean } | undefined;
   Results: {
     queryText: string;
     intent: "PHARMACY_ON_CALL" | "PHARMACY" | "CLINIC";

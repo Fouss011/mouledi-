@@ -155,7 +155,7 @@ function pickClearAudioIntent(
   return { intent, confidence, isClear, delta };
 }
 
-export default function HomeScreen({ navigation }: Props) {
+export default function HomeScreen({ navigation, route }: Props) {
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [statusText, setStatusText] = useState<string>("");
 
@@ -178,7 +178,6 @@ export default function HomeScreen({ navigation }: Props) {
     const now = Date.now();
     if (now - lastCoachRef.current < 45_000) return; // max 1 fois / 45s
     lastCoachRef.current = now;
-    // mets un audio mina si tu veux: "Astuce: dis Moulédji pharmacie..."
     // await playUi("say_mouledi_command");
   };
 
@@ -553,6 +552,21 @@ export default function HomeScreen({ navigation }: Props) {
       await playUi("repeat_please");
     }
   };
+
+  // ✅ CHANGEMENT: autoStartMic quand on vient de ResultsScreen (reset)
+  useEffect(() => {
+    const auto = (route as any)?.params?.autoStartMic;
+    if (!auto) return;
+
+    // Important: on vide le texte + on lance le mic après un mini delay (évite glitch navigation)
+    setStatusText("");
+    const t = setTimeout(() => {
+      onPressMic().catch(() => {});
+    }, 250);
+
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [(route as any)?.params?.autoStartMic]);
 
   const onDebugGo = async () => {
     const { intent, district } = routeQuery(typed);

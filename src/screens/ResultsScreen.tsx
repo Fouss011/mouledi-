@@ -668,8 +668,19 @@ export default function ResultsScreen({ navigation, route }: Props) {
           <Text style={styles.query}>Requête: {queryText}</Text>
         </View>
 
-        <Pressable onPress={onPressMic} style={[styles.micMini, recording ? styles.micMiniActive : null]}>
-          <Text style={styles.micMiniText}>{recording ? "⏹️" : "🎙️"}</Text>
+        {/* ✅ CHANGEMENT: micro mini = reset vers Home + autoStartMic */}
+        <Pressable
+          onPress={async () => {
+            await stopAllAudio();
+
+            navigation.reset({
+              index: 0,
+              routes: [{ name: "Home" as any, params: { autoStartMic: true } as any }],
+            });
+          }}
+          style={styles.micMini}
+        >
+          <Text style={styles.micMiniText}>🎙️</Text>
         </Pressable>
       </View>
 
@@ -769,7 +780,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#222",
   },
-  micMiniActive: { borderColor: "#555" },
   micMiniText: { color: "#fff", fontSize: 18 },
 
   status: { color: "#bbb", textAlign: "center", marginTop: 6 },
