@@ -308,34 +308,37 @@ export default function ResultsScreen({ navigation, route }: Props) {
   };
 
   const openMaps = async (item: PharmacyItem) => {
-    try {
-      const labelParts = [item.name, item.district, item.city].filter(Boolean);
-      const label = labelParts.join(", ");
+  try {
+    const labelParts = [item.name, item.address, item.district, item.city].filter(Boolean);
+    const label = labelParts.join(", ");
 
-      let url = "";
+    let url = "";
 
-      if (item.lat != null && item.lng != null) {
-        if (Platform.OS === "ios") {
-          url = `http://maps.apple.com/?ll=${item.lat},${item.lng}&q=${encodeURIComponent(item.name)}`;
-        } else {
-          url = `https://www.google.com/maps/search/?api=1&query=${item.lat},${item.lng}`;
-        }
+    if (Platform.OS === "ios") {
+      if (label && item.lat != null && item.lng != null) {
+        url = `http://maps.apple.com/?q=${encodeURIComponent(item.name)}&ll=${item.lat},${item.lng}`;
+      } else if (label) {
+        url = `http://maps.apple.com/?q=${encodeURIComponent(label)}`;
+      } else if (item.lat != null && item.lng != null) {
+        url = `http://maps.apple.com/?ll=${item.lat},${item.lng}`;
       } else {
-        url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(label || item.name)}`;
+        return;
       }
-
-      const can = await Linking.canOpenURL(url);
-      if (can) {
-        await Linking.openURL(url);
+    } else {
+      if (label) {
+        url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(label)}`;
+      } else if (item.lat != null && item.lng != null) {
+        url = `https://www.google.com/maps/search/?api=1&query=${item.lat},${item.lng}`;
       } else {
-        await Linking.openURL(
-          `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(label || item.name)}`
-        );
+        return;
       }
-    } catch (e) {
-      console.log("openMaps error:", e);
     }
-  };
+
+    await Linking.openURL(url);
+  } catch (e) {
+    console.log("openMaps error:", e);
+  }
+};
 
   const speakNameOnly = async (name: string) => {
     await stopAllAudio();
@@ -737,14 +740,14 @@ export default function ResultsScreen({ navigation, route }: Props) {
                   <Text style={styles.cardTitle}>{item.name}</Text>
 
                   <Pressable
-                    onPress={async () => {
-                      await stopAllAudio();
-                      await openMaps(item);
-                    }}
-                    style={styles.mapBtn}
-                  >
-                    <Text style={styles.mapBtnText}>📍</Text>
-                  </Pressable>
+  onPress={async () => {
+    await stopAllAudio();
+    await openMaps(item);
+  }}
+  style={styles.mapBtn}
+>
+  <Text style={styles.mapBtnText}>🧭 Itinéraire</Text>
+</Pressable>
                 </View>
 
                 <Text style={styles.cardText}>
@@ -857,16 +860,21 @@ const styles = StyleSheet.create({
     paddingRight: 8,
   },
   mapBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: "#111",
-    borderWidth: 1,
-    borderColor: "#333",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  mapBtnText: { fontSize: 18 },
+  minWidth: 110,
+  height: 40,
+  paddingHorizontal: 12,
+  borderRadius: 12,
+  backgroundColor: "#111",
+  borderWidth: 1,
+  borderColor: "#333",
+  alignItems: "center",
+  justifyContent: "center",
+},
+mapBtnText: {
+  fontSize: 14,
+  fontWeight: "700",
+  color: "#fff",
+},
 
   cardText: { color: "#bbb", marginTop: 6 },
   cardSub: { color: "#888", marginTop: 6, fontSize: 13 },
