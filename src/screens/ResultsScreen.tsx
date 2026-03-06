@@ -264,8 +264,6 @@ export default function ResultsScreen({ navigation, route }: Props) {
     // Audio guidance (mina)
     await playUi("fallback_pharmacies_or_retry");
 
-    // Option: si trop d’échecs, retour accueil direct
-    // Là on le fait déjà dès le 1er échec (ton souhait: éviter d'induire en erreur)
     await stopAllAudio();
     navigation.goBack();
   };
@@ -278,8 +276,6 @@ export default function ResultsScreen({ navigation, route }: Props) {
       try {
         await loadData(district, nearLatState, nearLngState, mode);
 
-        // sur web (Netlify), la géoloc peut échouer sans geste utilisateur.
-        // on tente quand même une fois.
         if (mounted && (nearLatState == null || nearLngState == null)) {
           const coords = await getNearCoordsSafe(8000);
           if (!mounted) return;
@@ -309,6 +305,36 @@ export default function ResultsScreen({ navigation, route }: Props) {
     const url = `tel:${phone.replace(/\s+/g, "")}`;
     const can = await Linking.canOpenURL(url);
     if (can) Linking.openURL(url);
+  };
+
+  const openMaps = async (item: PharmacyItem) => {
+    try {
+      const labelParts = [item.name, item.district, item.city].filter(Boolean);
+      const label = labelParts.join(", ");
+
+      let url = "";
+
+      if (item.lat != null && item.lng != null) {
+        if (Platform.OS === "ios") {
+          url = `http://maps.apple.com/?ll=${item.lat},${item.lng}&q=${encodeURIComponent(item.name)}`;
+        } else {
+          url = `https://www.google.com/maps/search/?api=1&query=${item.lat},${item.lng}`;
+        }
+      } else {
+        url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(label || item.name)}`;
+      }
+
+      const can = await Linking.canOpenURL(url);
+      if (can) {
+        await Linking.openURL(url);
+      } else {
+        await Linking.openURL(
+          `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(label || item.name)}`
+        );
+      }
+    } catch (e) {
+      console.log("openMaps error:", e);
+    }
   };
 
   const speakNameOnly = async (name: string) => {
@@ -416,7 +442,6 @@ export default function ResultsScreen({ navigation, route }: Props) {
       return;
     }
 
-    // coords (si possible)
     let lat = nearLatState;
     let lng = nearLngState;
 
@@ -428,7 +453,6 @@ export default function ResultsScreen({ navigation, route }: Props) {
       setNearLngState(lng);
     }
 
-    // ✅ 1) INTENT AUDIO d'abord (FR + MINA)
     setStatusText("Compréhension audio…");
     let audioIntent: "PHARMACY" | "CLINIC" | "PHARMACY_ON_CALL" | "UNKNOWN" = "UNKNOWN";
     try {
@@ -454,7 +478,6 @@ export default function ResultsScreen({ navigation, route }: Props) {
       }
     }
 
-    // ✅ 2) Sinon STT (utile pour phrases FR + quartiers)
     setStatusText("Reconnaissance STT…");
     const { text } = await sttFromAudio(uri);
 
@@ -525,7 +548,6 @@ export default function ResultsScreen({ navigation, route }: Props) {
                 return;
               }
 
-              // coords (⚠️ sur web il faut souvent un geste utilisateur -> ici on est OK)
               let lat = nearLatState;
               let lng = nearLngState;
               if (lat == null || lng == null) {
@@ -536,7 +558,6 @@ export default function ResultsScreen({ navigation, route }: Props) {
                 setNearLngState(lng);
               }
 
-              // ✅ 1) INTENT AUDIO
               setStatusText("Compréhension audio…");
               let audioIntent: "PHARMACY" | "CLINIC" | "PHARMACY_ON_CALL" | "UNKNOWN" = "UNKNOWN";
               try {
@@ -562,7 +583,6 @@ export default function ResultsScreen({ navigation, route }: Props) {
                 }
               }
 
-              // ✅ 2) Sinon STT
               setStatusText("Reconnaissance STT…");
               const { text } = await sttFromBlob(blob);
 
@@ -686,9 +706,6 @@ export default function ResultsScreen({ navigation, route }: Props) {
 
       {statusText ? <Text style={styles.status}>{statusText}</Text> : null}
 
-      {/* ✅ IMPORTANT: sur Netlify/web, la géoloc peut rester null tant que l’utilisateur ne clique pas.
-          Donc on affiche un bloc qui force un geste utilisateur -> permission -> distance OK.
-      */}
       {!hasCoords ? (
         <View style={styles.geoBox}>
           <Text style={styles.geoText}>Active la localisation pour voir la distance et le tri près de toi.</Text>
@@ -712,11 +729,23 @@ export default function ResultsScreen({ navigation, route }: Props) {
                 ? ` • ${item.distance_km} km`
                 : hasCoords
                 ? " • …"
-                : ""; // pas de coords -> rien
+                : "";
 
             return (
               <Pressable onPress={() => speakNameOnly(item.name)} style={styles.card}>
-                <Text style={styles.cardTitle}>{item.name}</Text>
+                <View style={styles.cardTopRow}>
+                  <Text style={styles.cardTitle}>{item.name}</Text>
+
+                  <Pressable
+                    onPress={async () => {
+                      await stopAllAudio();
+                      await openMaps(item);
+                    }}
+                    style={styles.mapBtn}
+                  >
+                    <Text style={styles.mapBtnText}>📍</Text>
+                  </Pressable>
+                </View>
 
                 <Text style={styles.cardText}>
                   {item.district ? item.district : "—"}
@@ -814,7 +843,31 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 12,
   },
-  cardTitle: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  cardTopRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  cardTitle: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
+    flex: 1,
+    paddingRight: 8,
+  },
+  mapBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "#111",
+    borderWidth: 1,
+    borderColor: "#333",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  mapBtnText: { fontSize: 18 },
+
   cardText: { color: "#bbb", marginTop: 6 },
   cardSub: { color: "#888", marginTop: 6, fontSize: 13 },
   cardMuted: { color: "#666", marginTop: 10 },
