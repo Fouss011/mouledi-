@@ -14,8 +14,7 @@ import {
   matchIntentFromAudio,
   matchIntentFromBlob,
   BASE_URL,
-  STT_URL,
-} from "../lib/api";
+} from "../lib/api";;
 
 type Props = NativeStackScreenProps<RootStackParamList, "Home">;
 
@@ -596,8 +595,6 @@ export default function HomeScreen({ navigation, route }: Props) {
     <View style={styles.container}>
       <Text style={styles.title}>MOULÉDI</Text>
       <Text style={styles.subtitle}>Toucher → Parler → Écouter → Agir</Text>
-      <Text style={{ color: "#444", fontSize: 11, marginTop: 6 }}>API: {BASE_URL}</Text>
-      <Text style={{ color: "#444", fontSize: 11, marginTop: 6 }}>STT: {STT_URL}</Text>
 
       <View style={styles.center}>
         <Pressable style={[styles.micButton, isListening ? styles.micActive : null]} onPress={onPressMic}>
@@ -670,9 +667,9 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 14 },
 
   micButton: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
+    width: 156,
+    height: 156,
+    borderRadius: 78,
     backgroundColor: "#111",
     alignItems: "center",
     justifyContent: "center",
@@ -680,7 +677,7 @@ const styles = StyleSheet.create({
     borderColor: "#222",
   },
   micActive: { borderColor: "#555" },
-  micText: { fontSize: 48 },
+  micText: { fontSize: 54 },
 
   hint: { color: "#ddd", textAlign: "center", marginTop: 6 },
   status: { color: "#bbb", textAlign: "center", marginTop: 6 },
