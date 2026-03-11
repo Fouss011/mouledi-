@@ -11,9 +11,14 @@ import {
   Platform,
 } from "react-native";
 import * as Location from "expo-location";
+import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { supabase } from "../lib/supabase";
+import { RootStackParamList } from "../../App";
+
+type Props = NativeStackScreenProps<RootStackParamList, "CollectProvider">;
 
 type CountryCode = "TG" | "BJ" | "SN";
+
 type ProviderType =
   | "pharmacy"
   | "clinic"
@@ -21,6 +26,7 @@ type ProviderType =
   | "hotel"
   | "administrative"
   | "other";
+
 type ProviderCategory =
   | "health"
   | "administrative"
@@ -86,17 +92,19 @@ function ChoiceChip<T extends string>({
   );
 }
 
-export default function CollectProviderScreen() {
+export default function CollectProviderScreen({ navigation }: Props) {
   const [form, setForm] = useState<FormState>(initialForm);
   const [loadingGps, setLoadingGps] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [gpsStatus, setGpsStatus] = useState<string>("Initialisation GPS...");
+  const [gpsReady, setGpsReady] = useState(false);
 
   const updateField = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
   const canSubmit = useMemo(() => {
-    return (
+    return !!(
       form.country.trim() &&
       form.type.trim() &&
       form.category.trim() &&
@@ -127,10 +135,17 @@ export default function CollectProviderScreen() {
   const getCurrentLocation = async () => {
     try {
       setLoadingGps(true);
+      setGpsStatus("Récupération de la position...");
+      setGpsReady(false);
 
       const perm = await Location.requestForegroundPermissionsAsync();
+
       if (!perm.granted) {
-        Alert.alert("Localisation refusée", "Le GPS est nécessaire pour enregistrer la position.");
+        setGpsStatus("GPS refusé");
+        Alert.alert(
+          "Localisation refusée",
+          "L'autorisation GPS est nécessaire pour récupérer automatiquement la position."
+        );
         return;
       }
 
@@ -158,22 +173,36 @@ export default function CollectProviderScreen() {
           }
 
           const districtGuess =
-            first.district || first.subregion || first.street || first.name || "";
+            first.district ||
+            first.subregion ||
+            first.street ||
+            first.name ||
+            "";
 
           if (!form.district && districtGuess) {
             updateField("district", districtGuess);
           }
 
-          const addr = [first.streetNumber, first.street].filter(Boolean).join(" ");
-          if (!form.address && addr) {
-            updateField("address", addr);
+          const addressGuess = [first.streetNumber, first.street]
+            .filter(Boolean)
+            .join(" ");
+
+          if (!form.address && addressGuess) {
+            updateField("address", addressGuess);
           }
         }
       } catch {
-        // reverse geocoding peut échouer, on n'empêche pas la collecte
+        // pas bloquant
       }
+
+      setGpsStatus("Position récupérée");
+      setGpsReady(true);
     } catch (e: any) {
-      Alert.alert("Erreur GPS", e?.message || "Impossible de récupérer la position.");
+      setGpsStatus("Erreur GPS");
+      Alert.alert(
+        "Erreur GPS",
+        e?.message || "Impossible de récupérer la position GPS."
+      );
     } finally {
       setLoadingGps(false);
     }
@@ -189,17 +218,11 @@ export default function CollectProviderScreen() {
       country: form.country,
       collectorName: form.collectorName,
     });
+    setGpsReady(false);
+    setGpsStatus("Réinitialisé, récupération GPS...");
   };
 
-  const saveProvider = async () => {
-    if (!canSubmit) {
-      Alert.alert(
-        "Champs manquants",
-        "Remplis au minimum : pays, type, catégorie, nom, ville, quartier, latitude et longitude."
-      );
-      return;
-    }
-
+  const doSave = async () => {
     const lat = Number(form.lat);
     const lng = Number(form.lng);
 
@@ -236,10 +259,47 @@ export default function CollectProviderScreen() {
       resetForm();
       await getCurrentLocation();
     } catch (e: any) {
-      Alert.alert("Erreur", e?.message || "Impossible d’enregistrer la structure.");
+      Alert.alert(
+        "Erreur",
+        e?.message || "Impossible d’enregistrer la structure."
+      );
     } finally {
       setSaving(false);
     }
+  };
+
+  const saveProvider = async () => {
+    if (!form.name.trim()) {
+      Alert.alert("Champ manquant", "Le nom du lieu est obligatoire.");
+      return;
+    }
+
+    if (!form.city.trim()) {
+      Alert.alert("Champ manquant", "La ville est obligatoire.");
+      return;
+    }
+
+    if (!form.district.trim()) {
+      Alert.alert("Champ manquant", "Le quartier / district est obligatoire.");
+      return;
+    }
+
+    if (!form.lat.trim() || !form.lng.trim()) {
+      Alert.alert(
+        "GPS manquant",
+        "Appuie sur « Actualiser GPS » avant d’enregistrer."
+      );
+      return;
+    }
+
+    Alert.alert(
+      "Confirmer l’enregistrement",
+      `Lieu : ${form.name.trim()}\nVille : ${form.city.trim()}\nQuartier : ${form.district.trim()}`,
+      [
+        { text: "Annuler", style: "cancel" },
+        { text: "Enregistrer", onPress: doSave },
+      ]
+    );
   };
 
   return (
@@ -248,39 +308,133 @@ export default function CollectProviderScreen() {
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
     >
+      <View style={styles.topBar}>
+        <Pressable style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <Text style={styles.backBtnText}>← Retour</Text>
+        </Pressable>
+      </View>
+
       <Text style={styles.title}>Collecte terrain</Text>
-      <Text style={styles.subtitle}>Enregistrement enquêteur → providers_pending</Text>
+      <Text style={styles.subtitle}>
+        Enregistrement enquêteur → providers_pending
+      </Text>
+
+      <View style={styles.gpsBox}>
+        <Text style={styles.gpsBoxTitle}>État GPS</Text>
+        <Text style={[styles.gpsBoxText, gpsReady && styles.gpsReadyText]}>
+          {gpsStatus}
+        </Text>
+        <Text style={styles.gpsTip}>
+          Place-toi devant le lieu, attends 2 à 3 secondes, puis appuie sur
+          « Actualiser GPS ».
+        </Text>
+      </View>
 
       <View style={styles.section}>
         <Text style={styles.label}>Pays *</Text>
         <View style={styles.rowWrap}>
-          <ChoiceChip label="Togo" value="TG" selectedValue={form.country} onPress={(v) => updateField("country", v)} />
-          <ChoiceChip label="Bénin" value="BJ" selectedValue={form.country} onPress={(v) => updateField("country", v)} />
-          <ChoiceChip label="Sénégal" value="SN" selectedValue={form.country} onPress={(v) => updateField("country", v)} />
+          <ChoiceChip
+            label="Togo"
+            value="TG"
+            selectedValue={form.country}
+            onPress={(v) => updateField("country", v)}
+          />
+          <ChoiceChip
+            label="Bénin"
+            value="BJ"
+            selectedValue={form.country}
+            onPress={(v) => updateField("country", v)}
+          />
+          <ChoiceChip
+            label="Sénégal"
+            value="SN"
+            selectedValue={form.country}
+            onPress={(v) => updateField("country", v)}
+          />
         </View>
       </View>
 
       <View style={styles.section}>
         <Text style={styles.label}>Type *</Text>
         <View style={styles.rowWrap}>
-          <ChoiceChip label="Pharmacie" value="pharmacy" selectedValue={form.type} onPress={applyTypePreset} />
-          <ChoiceChip label="Clinique" value="clinic" selectedValue={form.type} onPress={applyTypePreset} />
-          <ChoiceChip label="Restaurant" value="restaurant" selectedValue={form.type} onPress={applyTypePreset} />
-          <ChoiceChip label="Hôtel" value="hotel" selectedValue={form.type} onPress={applyTypePreset} />
-          <ChoiceChip label="Administratif" value="administrative" selectedValue={form.type} onPress={applyTypePreset} />
-          <ChoiceChip label="Autre" value="other" selectedValue={form.type} onPress={applyTypePreset} />
+          <ChoiceChip
+            label="Pharmacie"
+            value="pharmacy"
+            selectedValue={form.type}
+            onPress={applyTypePreset}
+          />
+          <ChoiceChip
+            label="Clinique"
+            value="clinic"
+            selectedValue={form.type}
+            onPress={applyTypePreset}
+          />
+          <ChoiceChip
+            label="Restaurant"
+            value="restaurant"
+            selectedValue={form.type}
+            onPress={applyTypePreset}
+          />
+          <ChoiceChip
+            label="Hôtel"
+            value="hotel"
+            selectedValue={form.type}
+            onPress={applyTypePreset}
+          />
+          <ChoiceChip
+            label="Administratif"
+            value="administrative"
+            selectedValue={form.type}
+            onPress={applyTypePreset}
+          />
+          <ChoiceChip
+            label="Autre"
+            value="other"
+            selectedValue={form.type}
+            onPress={applyTypePreset}
+          />
         </View>
       </View>
 
       <View style={styles.section}>
         <Text style={styles.label}>Catégorie *</Text>
         <View style={styles.rowWrap}>
-          <ChoiceChip label="Santé" value="health" selectedValue={form.category} onPress={(v) => updateField("category", v)} />
-          <ChoiceChip label="Administratif" value="administrative" selectedValue={form.category} onPress={(v) => updateField("category", v)} />
-          <ChoiceChip label="Alimentation" value="food" selectedValue={form.category} onPress={(v) => updateField("category", v)} />
-          <ChoiceChip label="Hébergement" value="lodging" selectedValue={form.category} onPress={(v) => updateField("category", v)} />
-          <ChoiceChip label="Commerce" value="commerce" selectedValue={form.category} onPress={(v) => updateField("category", v)} />
-          <ChoiceChip label="Service" value="service" selectedValue={form.category} onPress={(v) => updateField("category", v)} />
+          <ChoiceChip
+            label="Santé"
+            value="health"
+            selectedValue={form.category}
+            onPress={(v) => updateField("category", v)}
+          />
+          <ChoiceChip
+            label="Administratif"
+            value="administrative"
+            selectedValue={form.category}
+            onPress={(v) => updateField("category", v)}
+          />
+          <ChoiceChip
+            label="Alimentation"
+            value="food"
+            selectedValue={form.category}
+            onPress={(v) => updateField("category", v)}
+          />
+          <ChoiceChip
+            label="Hébergement"
+            value="lodging"
+            selectedValue={form.category}
+            onPress={(v) => updateField("category", v)}
+          />
+          <ChoiceChip
+            label="Commerce"
+            value="commerce"
+            selectedValue={form.category}
+            onPress={(v) => updateField("category", v)}
+          />
+          <ChoiceChip
+            label="Service"
+            value="service"
+            selectedValue={form.category}
+            onPress={(v) => updateField("category", v)}
+          />
         </View>
       </View>
 
@@ -377,7 +531,11 @@ export default function CollectProviderScreen() {
       <View style={styles.section}>
         <View style={styles.rowBetween}>
           <Text style={styles.label}>GPS *</Text>
-          <Pressable style={styles.secondaryBtn} onPress={getCurrentLocation} disabled={loadingGps}>
+          <Pressable
+            style={styles.secondaryBtn}
+            onPress={getCurrentLocation}
+            disabled={loadingGps}
+          >
             {loadingGps ? (
               <ActivityIndicator color="#fff" />
             ) : (
@@ -387,21 +545,21 @@ export default function CollectProviderScreen() {
         </View>
 
         <TextInput
-          style={styles.input}
+          style={[styles.input, styles.readOnlyInput]}
           placeholder="Latitude"
           placeholderTextColor="#777"
-          keyboardType={Platform.OS === "ios" ? "numbers-and-punctuation" : "numeric"}
           value={form.lat}
-          onChangeText={(v) => updateField("lat", v)}
+          editable={false}
+          selectTextOnFocus={false}
         />
 
         <TextInput
-          style={styles.input}
+          style={[styles.input, styles.readOnlyInput]}
           placeholder="Longitude"
           placeholderTextColor="#777"
-          keyboardType={Platform.OS === "ios" ? "numbers-and-punctuation" : "numeric"}
           value={form.lng}
-          onChangeText={(v) => updateField("lng", v)}
+          editable={false}
+          selectTextOnFocus={false}
         />
       </View>
 
@@ -411,7 +569,7 @@ export default function CollectProviderScreen() {
         disabled={!canSubmit || saving}
       >
         {saving ? (
-          <ActivityIndicator color="#fff" />
+          <ActivityIndicator color="#000" />
         ) : (
           <Text style={styles.primaryBtnText}>Enregistrer</Text>
         )}
@@ -430,6 +588,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 40,
   },
+  topBar: {
+    marginBottom: 8,
+  },
+  backBtn: {
+    alignSelf: "flex-start",
+    backgroundColor: "#111",
+    borderWidth: 1,
+    borderColor: "#222",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  backBtnText: {
+    color: "#fff",
+    fontWeight: "700",
+  },
   title: {
     color: "#fff",
     fontSize: 24,
@@ -439,6 +613,31 @@ const styles = StyleSheet.create({
   subtitle: {
     color: "#888",
     marginBottom: 20,
+  },
+  gpsBox: {
+    backgroundColor: "#0b0b0b",
+    borderColor: "#222",
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 18,
+  },
+  gpsBoxTitle: {
+    color: "#fff",
+    fontWeight: "800",
+    marginBottom: 6,
+  },
+  gpsBoxText: {
+    color: "#bbb",
+    marginBottom: 6,
+  },
+  gpsReadyText: {
+    color: "#7CFC98",
+  },
+  gpsTip: {
+    color: "#777",
+    fontSize: 12,
+    lineHeight: 18,
   },
   section: {
     marginBottom: 16,
@@ -457,6 +656,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 12,
     marginBottom: 10,
+  },
+  readOnlyInput: {
+    color: "#999",
   },
   textarea: {
     minHeight: 100,
