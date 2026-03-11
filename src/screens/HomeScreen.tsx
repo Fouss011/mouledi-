@@ -593,7 +593,15 @@ export default function HomeScreen({ navigation, route }: Props) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>MOULÉDI</Text>
+      <Pressable
+        onLongPress={() => {
+          setStatusText("Accès enquêteur...");
+          navigation.navigate("CollectProvider");
+        }}
+        delayLongPress={900}
+    >
+        <Text style={styles.title}>MOULÉDI</Text>
+    </Pressable>
       <Text style={styles.subtitle}>Toucher → Parler → Écouter → Agir</Text>
 
       <View style={styles.center}>

@@ -4,6 +4,7 @@ import { createNativeStackNavigator, NativeStackNavigationOptions } from "@react
 
 import HomeScreen from "./src/screens/HomeScreen";
 import ResultsScreen from "./src/screens/ResultsScreen";
+import CollectProviderScreen from "./src/screens/CollectProviderScreen";
 
 export type RootStackParamList = {
   Home: { autoStartMic?: boolean } | undefined;
