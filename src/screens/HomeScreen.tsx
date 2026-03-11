@@ -664,6 +664,13 @@ export default function HomeScreen({ navigation, route }: Props) {
           </>
         ) : null}
       </View>
+
+      <Pressable
+        onPress={() => navigation.navigate("CollectProvider")}
+        style={styles.collectBtn}
+      >
+        <Text style={styles.collectText}>Accès enquêteur</Text>
+      </Pressable>
     </View>
   );
 }
@@ -760,4 +767,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   debugText: { color: "#fff", fontWeight: "700" },
+
+  collectBtn: {
+  marginTop: 30,
+  alignSelf: "center",
+  paddingVertical: 8,
+  paddingHorizontal: 14,
+  borderRadius: 20,
+  borderWidth: 1,
+  borderColor: "#222",
+  backgroundColor: "#0b0b0b",
+},
+
+collectText: {
+  color: "#777",
+  fontSize: 12,
+},
 });
