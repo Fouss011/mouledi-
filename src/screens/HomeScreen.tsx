@@ -14,13 +14,13 @@ import {
   matchIntentFromAudio,
   matchIntentFromBlob,
   BASE_URL,
-} from "../lib/api";;
+} from "../lib/api";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Home">;
 
 /** --- UI AUDIO (mina) helper local --- */
 let currentSound: Audio.Sound | null = null;
-let playSeq = 0; // empêche les playUi concurrents
+let playSeq = 0;
 
 async function stopCurrentSound() {
   try {
@@ -51,7 +51,9 @@ async function playUi(key: string, lang: string = "mina") {
   try {
     await stopAllAudio();
 
-    const r = await fetch(`${BASE_URL}/health/ui-audio?key=${encodeURIComponent(key)}&lang=${encodeURIComponent(lang)}`);
+    const r = await fetch(
+      `${BASE_URL}/health/ui-audio?key=${encodeURIComponent(key)}&lang=${encodeURIComponent(lang)}`
+    );
     if (!r.ok) return;
 
     const data = await r.json();
@@ -83,9 +85,9 @@ async function playUi(key: string, lang: string = "mina") {
   } catch {}
 }
 
-/** ✅ Localisation robuste (web + mobile) */
-async function getNearCoordsSafe(timeoutMs = 8000): Promise<{ nearLat: number | null; nearLng: number | null }> {
-  // WEB
+async function getNearCoordsSafe(
+  timeoutMs = 8000
+): Promise<{ nearLat: number | null; nearLng: number | null }> {
   if (Platform.OS === "web" && typeof navigator !== "undefined" && (navigator as any).geolocation) {
     return await new Promise((resolve) => {
       let done = false;
@@ -114,7 +116,6 @@ async function getNearCoordsSafe(timeoutMs = 8000): Promise<{ nearLat: number | 
     });
   }
 
-  // MOBILE (Expo)
   try {
     const perm = await Location.requestForegroundPermissionsAsync();
     if (!perm.granted) return { nearLat: null, nearLng: null };
@@ -131,7 +132,6 @@ async function getNearCoordsSafe(timeoutMs = 8000): Promise<{ nearLat: number | 
   }
 }
 
-/** ✅ Pick intent audio ONLY si clair (delta gate) */
 function pickClearAudioIntent(
   resp: { intent?: string; confidence?: number; scores?: { intent: string; score: number }[] } | null | undefined,
   deltaMin = 0.18,
@@ -158,26 +158,20 @@ export default function HomeScreen({ navigation, route }: Props) {
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [statusText, setStatusText] = useState<string>("");
 
-  // Debug (caché)
   const [debugMode, setDebugMode] = useState<boolean>(false);
   const [typed, setTyped] = useState<string>("pharmacie");
 
-  // fallback UI (si intent UNKNOWN)
   const [showFallback, setShowFallback] = useState<boolean>(false);
 
-  // WEB recorder
   const [webRec, setWebRec] = useState<MediaRecorder | null>(null);
 
-  // ✅ UI: listening state correct (mobile + web)
   const isListening = useMemo(() => recording != null || webRec != null, [recording, webRec]);
 
-  // anti spam “astuce” (pas obligé)
   const lastCoachRef = useRef<number>(0);
   const maybeCoachWakeWord = async () => {
     const now = Date.now();
-    if (now - lastCoachRef.current < 45_000) return; // max 1 fois / 45s
+    if (now - lastCoachRef.current < 45_000) return;
     lastCoachRef.current = now;
-    // await playUi("say_mouledi_command");
   };
 
   useEffect(() => {
@@ -288,7 +282,6 @@ export default function HomeScreen({ navigation, route }: Props) {
     return false;
   };
 
-  // ✅ fallback soft (icônes) -> aucun texte obligatoire
   const openPharmacies = async () => {
     setShowFallback(false);
     setStatusText("Localisation...");
@@ -320,7 +313,6 @@ export default function HomeScreen({ navigation, route }: Props) {
     await rec.stopAndUnloadAsync();
     setRecording(null);
 
-    // ✅ IMPORTANT: remettre mode playback sinon TTS/UI audio peut être muet
     await setPlaybackMode();
 
     const st = await rec.getStatusAsync();
@@ -338,7 +330,6 @@ export default function HomeScreen({ navigation, route }: Props) {
       return;
     }
 
-    // PRE-WARM
     setStatusText("Réveil serveur…");
     const okApi = await pingBackend();
     const okStt = await pingStt();
@@ -354,7 +345,6 @@ export default function HomeScreen({ navigation, route }: Props) {
       return;
     }
 
-    // AUDIO FIRST
     setStatusText("Compréhension audio…");
     let audioResp: any = null;
     try {
@@ -364,7 +354,6 @@ export default function HomeScreen({ navigation, route }: Props) {
     const picked = pickClearAudioIntent(audioResp, 0.18, 0.35);
     const audioIntent = picked.intent;
 
-    // STT seulement si audio pas clair (pour quartier, etc.)
     let text = "";
     if (!picked.isClear) {
       setStatusText("Reconnaissance…");
@@ -376,25 +365,25 @@ export default function HomeScreen({ navigation, route }: Props) {
       }
     }
 
-    // SOFT wake-word: si l’utilisateur dit juste "pharmacie" -> on exécute, mais on coach
     const t = (text || "").toLowerCase();
     const hasWake = t.includes("moul");
     const looksPharmacy = t.includes("pharm") || t.includes("médic") || t.includes("medic");
-    const looksClinic = t.includes("clini") || t.includes("hop") || t.includes("hôp") || t.includes("centre de santé") || t.includes("santé");
+    const looksClinic =
+      t.includes("clini") ||
+      t.includes("hop") ||
+      t.includes("hôp") ||
+      t.includes("centre de santé") ||
+      t.includes("santé");
     const looksOnCall = t.includes("garde") || t.includes("urgence");
 
-    // district vient du texte si dispo
     const routed = text && text.trim().length >= 2 ? routeQuery(text) : { intent: "UNKNOWN", district: null as any };
     const district = (routed as any)?.district ?? null;
 
-    // localisation
     setStatusText("Localisation...");
     const { nearLat, nearLng } = await getNearCoordsSafe(8000);
 
-    // 1) intent audio clair => direct
     const finalIntent = picked.isClear ? audioIntent : (routed as any)?.intent ?? "UNKNOWN";
 
-    // 2) SOFT: si pas clair mais mots FR détectés
     if (!picked.isClear && finalIntent === "UNKNOWN") {
       if (looksOnCall) {
         if (!hasWake) await maybeCoachWakeWord();
@@ -425,7 +414,6 @@ export default function HomeScreen({ navigation, route }: Props) {
     try {
       await stopAllAudio();
 
-      // WEB
       if (Platform.OS === "web") {
         if (!webRec) {
           setShowFallback(false);
@@ -461,7 +449,6 @@ export default function HomeScreen({ navigation, route }: Props) {
                 return;
               }
 
-              // AUDIO FIRST
               setStatusText("Compréhension audio…");
               let audioResp: any = null;
               try {
@@ -471,7 +458,6 @@ export default function HomeScreen({ navigation, route }: Props) {
               const picked = pickClearAudioIntent(audioResp, 0.18, 0.35);
               const audioIntent = picked.intent;
 
-              // STT seulement si audio pas clair
               let text = "";
               if (!picked.isClear) {
                 setStatusText("Reconnaissance…");
@@ -486,10 +472,16 @@ export default function HomeScreen({ navigation, route }: Props) {
               const t = (text || "").toLowerCase();
               const hasWake = t.includes("moul");
               const looksPharmacy = t.includes("pharm") || t.includes("médic") || t.includes("medic");
-              const looksClinic = t.includes("clini") || t.includes("hop") || t.includes("hôp") || t.includes("centre de santé") || t.includes("santé");
+              const looksClinic =
+                t.includes("clini") ||
+                t.includes("hop") ||
+                t.includes("hôp") ||
+                t.includes("centre de santé") ||
+                t.includes("santé");
               const looksOnCall = t.includes("garde") || t.includes("urgence");
 
-              const routed = text && text.trim().length >= 2 ? routeQuery(text) : { intent: "UNKNOWN", district: null as any };
+              const routed =
+                text && text.trim().length >= 2 ? routeQuery(text) : { intent: "UNKNOWN", district: null as any };
               const district = (routed as any)?.district ?? null;
 
               setStatusText("Localisation...");
@@ -538,7 +530,6 @@ export default function HomeScreen({ navigation, route }: Props) {
         }
       }
 
-      // MOBILE
       if (recording) {
         await stopRecordingAndProcess(recording);
       } else {
@@ -552,19 +543,16 @@ export default function HomeScreen({ navigation, route }: Props) {
     }
   };
 
-  // ✅ CHANGEMENT: autoStartMic quand on vient de ResultsScreen (reset)
   useEffect(() => {
     const auto = (route as any)?.params?.autoStartMic;
     if (!auto) return;
 
-    // Important: on vide le texte + on lance le mic après un mini delay (évite glitch navigation)
     setStatusText("");
     const t = setTimeout(() => {
       onPressMic().catch(() => {});
     }, 250);
 
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [(route as any)?.params?.autoStartMic]);
 
   const onDebugGo = async () => {
@@ -593,15 +581,7 @@ export default function HomeScreen({ navigation, route }: Props) {
 
   return (
     <View style={styles.container}>
-      <Pressable
-        onLongPress={() => {
-          setStatusText("Accès enquêteur...");
-          navigation.navigate("CollectProvider");
-        }}
-        delayLongPress={900}
-    >
-        <Text style={styles.title}>MOULÉDI</Text>
-    </Pressable>
+      <Text style={styles.title}>MOULÉDI</Text>
       <Text style={styles.subtitle}>Toucher → Parler → Écouter → Agir</Text>
 
       <View style={styles.center}>
@@ -613,7 +593,6 @@ export default function HomeScreen({ navigation, route }: Props) {
           {isListening ? "Enregistrement... (appuie STOP quand tu as fini)" : "Appuie pour parler, puis ré-appuie pour valider."}
         </Text>
 
-        {/* ✅ exemples de commandes (guidance) */}
         <View style={styles.voiceExamples}>
           <Text style={styles.voiceTitle}>Dis par exemple :</Text>
           <Text style={styles.voiceCmd}>• Moulédji pharmacie</Text>
@@ -622,7 +601,6 @@ export default function HomeScreen({ navigation, route }: Props) {
 
         {statusText ? <Text style={styles.status}>{statusText}</Text> : null}
 
-        {/* ✅ fallback avec icônes + micro */}
         {showFallback ? (
           <View style={styles.choiceBox}>
             <Text style={styles.choiceTitle}>Je peux te proposer :</Text>
@@ -639,7 +617,7 @@ export default function HomeScreen({ navigation, route }: Props) {
               </Pressable>
             </View>
 
-            <Pressable onPress={onPressMic} style={[styles.choiceMicBtn]}>
+            <Pressable onPress={onPressMic} style={styles.choiceMicBtn}>
               <Text style={styles.choiceMicText}>Réessayer 🎙️</Text>
             </Pressable>
           </View>
@@ -665,10 +643,7 @@ export default function HomeScreen({ navigation, route }: Props) {
         ) : null}
       </View>
 
-      <Pressable
-        onPress={() => navigation.navigate("CollectProvider")}
-        style={styles.collectBtn}
-      >
+      <Pressable onPress={() => navigation.navigate("CollectProvider")} style={styles.collectBtn}>
         <Text style={styles.collectText}>Accès enquêteur</Text>
       </Pressable>
     </View>
@@ -769,18 +744,18 @@ const styles = StyleSheet.create({
   debugText: { color: "#fff", fontWeight: "700" },
 
   collectBtn: {
-  marginTop: 30,
-  alignSelf: "center",
-  paddingVertical: 8,
-  paddingHorizontal: 14,
-  borderRadius: 20,
-  borderWidth: 1,
-  borderColor: "#222",
-  backgroundColor: "#0b0b0b",
-},
-
-collectText: {
-  color: "#777",
-  fontSize: 12,
-},
+    marginTop: 30,
+    alignSelf: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#222",
+    backgroundColor: "#0b0b0b",
+    marginBottom: 20,
+  },
+  collectText: {
+    color: "#777",
+    fontSize: 12,
+  },
 });
