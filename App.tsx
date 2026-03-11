@@ -1,6 +1,9 @@
 import React from "react";
 import { NavigationContainer } from "@react-navigation/native";
-import { createNativeStackNavigator, NativeStackNavigationOptions } from "@react-navigation/native-stack";
+import {
+  createNativeStackNavigator,
+  NativeStackNavigationOptions,
+} from "@react-navigation/native-stack";
 
 import HomeScreen from "./src/screens/HomeScreen";
 import ResultsScreen from "./src/screens/ResultsScreen";
@@ -15,6 +18,7 @@ export type RootStackParamList = {
     nearLat?: number;
     nearLng?: number;
   };
+  CollectProvider: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -26,9 +30,14 @@ const screenOptions: NativeStackNavigationOptions = {
 export default function App() {
   return (
     <NavigationContainer>
-      <Stack.Navigator id="root" initialRouteName="Home" screenOptions={screenOptions}>
+      <Stack.Navigator
+        id="root"
+        initialRouteName="Home"
+        screenOptions={screenOptions}
+      >
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="Results" component={ResultsScreen} />
+        <Stack.Screen name="CollectProvider" component={CollectProviderScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
