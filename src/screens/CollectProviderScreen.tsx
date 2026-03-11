@@ -8,9 +8,11 @@ import {
   Alert,
   ScrollView,
   ActivityIndicator,
+  Image,
   Platform,
 } from "react-native";
 import * as Location from "expo-location";
+import * as ImagePicker from "expo-image-picker";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { supabase } from "../lib/supabase";
 import { RootStackParamList } from "../../App";
@@ -49,6 +51,16 @@ type FormState = {
   collectorName: string;
   lat: string;
   lng: string;
+};
+
+type DuplicateCandidate = {
+  id: string;
+  name: string;
+  city: string | null;
+  district: string | null;
+  lat: number;
+  lng: number;
+  type: string;
 };
 
 const initialForm: FormState = {
@@ -92,12 +104,50 @@ function ChoiceChip<T extends string>({
   );
 }
 
+function haversineDistanceMeters(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number
+) {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const R = 6371000;
+
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c);
+}
+
+function normalizeName(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export default function CollectProviderScreen({ navigation }: Props) {
   const [form, setForm] = useState<FormState>(initialForm);
   const [loadingGps, setLoadingGps] = useState(false);
   const [saving, setSaving] = useState(false);
   const [gpsStatus, setGpsStatus] = useState<string>("Initialisation GPS...");
   const [gpsReady, setGpsReady] = useState(false);
+
+  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
 
   const updateField = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -123,7 +173,6 @@ export default function CollectProviderScreen({ navigation }: Props) {
     else if (type === "restaurant") category = "food";
     else if (type === "hotel") category = "lodging";
     else if (type === "administrative") category = "administrative";
-    else category = "service";
 
     setForm((prev) => ({
       ...prev,
@@ -192,7 +241,7 @@ export default function CollectProviderScreen({ navigation }: Props) {
           }
         }
       } catch {
-        // pas bloquant
+        // non bloquant
       }
 
       setGpsStatus("Position récupérée");
@@ -212,12 +261,136 @@ export default function CollectProviderScreen({ navigation }: Props) {
     getCurrentLocation().catch(() => {});
   }, []);
 
+  const takePhoto = async () => {
+    try {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+
+      if (!perm.granted) {
+        Alert.alert(
+          "Permission refusée",
+          "L'autorisation caméra est nécessaire pour prendre une photo."
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        quality: 0.6,
+        allowsEditing: false,
+      });
+
+      if (result.canceled) return;
+
+      const asset = result.assets?.[0];
+      if (!asset?.uri) return;
+
+      setImageUri(asset.uri);
+    } catch (e: any) {
+      Alert.alert("Erreur photo", e?.message || "Impossible de prendre la photo.");
+    }
+  };
+
+  const uploadProofImage = async (): Promise<string | null> => {
+    if (!imageUri) return null;
+
+    try {
+      setUploadingImage(true);
+
+      const response = await fetch(imageUri);
+      const blob = await response.blob();
+
+      const ext =
+        imageUri.toLowerCase().includes(".png") ? "png" : "jpg";
+
+      const fileName = `${form.country}/${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2)}.${ext}`;
+
+      const { error } = await supabase.storage
+        .from("provider-proof")
+        .upload(fileName, blob, {
+          contentType: ext === "png" ? "image/png" : "image/jpeg",
+          upsert: false,
+        });
+
+      if (error) throw error;
+
+      const { data } = supabase.storage
+        .from("provider-proof")
+        .getPublicUrl(fileName);
+
+      return data?.publicUrl || null;
+    } catch (e: any) {
+      throw new Error(e?.message || "Upload photo impossible.");
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const detectDuplicate = async (): Promise<{
+    possibleDuplicate: boolean;
+    duplicateNote: string | null;
+  }> => {
+    const lat = Number(form.lat);
+    const lng = Number(form.lng);
+
+    if (Number.isNaN(lat) || Number.isNaN(lng)) {
+      return { possibleDuplicate: false, duplicateNote: null };
+    }
+
+    const targetName = normalizeName(form.name);
+
+    try {
+      const { data, error } = await supabase
+        .from("providers_pending")
+        .select("id,name,city,district,lat,lng,type")
+        .eq("country", form.country)
+        .eq("type", form.type)
+        .limit(200);
+
+      if (error) throw error;
+
+      const rows = (data || []) as DuplicateCandidate[];
+
+      const candidates = rows
+        .map((row) => {
+          const distance = haversineDistanceMeters(lat, lng, row.lat, row.lng);
+          const sameName = normalizeName(row.name) === targetName;
+
+          return {
+            ...row,
+            distance,
+            sameName,
+          };
+        })
+        .filter((row) => row.distance <= 70 || row.sameName)
+        .sort((a, b) => a.distance - b.distance);
+
+      if (candidates.length === 0) {
+        return { possibleDuplicate: false, duplicateNote: null };
+      }
+
+      const best = candidates[0];
+      const note = `Possible doublon: ${best.name} à ${best.distance} m${
+        best.city ? `, ${best.city}` : ""
+      }${best.district ? `, ${best.district}` : ""}`;
+
+      return {
+        possibleDuplicate: true,
+        duplicateNote: note,
+      };
+    } catch {
+      return { possibleDuplicate: false, duplicateNote: null };
+    }
+  };
+
   const resetForm = () => {
     setForm({
       ...initialForm,
       country: form.country,
       collectorName: form.collectorName,
     });
+    setImageUri(null);
+    setDuplicateWarning(null);
     setGpsReady(false);
     setGpsStatus("Réinitialisé, récupération GPS...");
   };
@@ -234,6 +407,9 @@ export default function CollectProviderScreen({ navigation }: Props) {
     try {
       setSaving(true);
 
+      const proofImageUrl = await uploadProofImage();
+      const duplicateCheck = await detectDuplicate();
+
       const payload = {
         country: form.country,
         type: form.type,
@@ -248,6 +424,9 @@ export default function CollectProviderScreen({ navigation }: Props) {
         description_short: form.descriptionShort.trim() || null,
         notes: form.notes.trim() || null,
         collector_name: form.collectorName.trim() || null,
+        proof_image_url: proofImageUrl,
+        possible_duplicate: duplicateCheck.possibleDuplicate,
+        duplicate_note: duplicateCheck.duplicateNote,
         status: "pending",
       };
 
@@ -255,7 +434,15 @@ export default function CollectProviderScreen({ navigation }: Props) {
 
       if (error) throw error;
 
-      Alert.alert("Succès", "Le point a bien été enregistré.");
+      if (duplicateCheck.possibleDuplicate) {
+        Alert.alert(
+          "Enregistré avec alerte",
+          "Le point a été enregistré, mais un doublon potentiel a été détecté."
+        );
+      } else {
+        Alert.alert("Succès", "Le point a bien été enregistré.");
+      }
+
       resetForm();
       await getCurrentLocation();
     } catch (e: any) {
@@ -266,6 +453,11 @@ export default function CollectProviderScreen({ navigation }: Props) {
     } finally {
       setSaving(false);
     }
+  };
+
+  const previewDuplicate = async () => {
+    const check = await detectDuplicate();
+    setDuplicateWarning(check.duplicateNote);
   };
 
   const saveProvider = async () => {
@@ -292,9 +484,13 @@ export default function CollectProviderScreen({ navigation }: Props) {
       return;
     }
 
+    await previewDuplicate();
+
     Alert.alert(
       "Confirmer l’enregistrement",
-      `Lieu : ${form.name.trim()}\nVille : ${form.city.trim()}\nQuartier : ${form.district.trim()}`,
+      `Lieu : ${form.name.trim()}\nVille : ${form.city.trim()}\nQuartier : ${form.district.trim()}${
+        imageUri ? "\nPhoto : oui" : "\nPhoto : non"
+      }`,
       [
         { text: "Annuler", style: "cancel" },
         { text: "Enregistrer", onPress: doSave },
@@ -329,6 +525,13 @@ export default function CollectProviderScreen({ navigation }: Props) {
           « Actualiser GPS ».
         </Text>
       </View>
+
+      {duplicateWarning ? (
+        <View style={styles.warningBox}>
+          <Text style={styles.warningTitle}>Alerte doublon</Text>
+          <Text style={styles.warningText}>{duplicateWarning}</Text>
+        </View>
+      ) : null}
 
       <View style={styles.section}>
         <Text style={styles.label}>Pays *</Text>
@@ -445,7 +648,10 @@ export default function CollectProviderScreen({ navigation }: Props) {
           placeholder="Ex: Pharmacie Avédji"
           placeholderTextColor="#777"
           value={form.name}
-          onChangeText={(v) => updateField("name", v)}
+          onChangeText={(v) => {
+            updateField("name", v);
+            setDuplicateWarning(null);
+          }}
         />
       </View>
 
@@ -529,6 +735,24 @@ export default function CollectProviderScreen({ navigation }: Props) {
       </View>
 
       <View style={styles.section}>
+        <Text style={styles.label}>Photo preuve</Text>
+
+        {imageUri ? (
+          <Image source={{ uri: imageUri }} style={styles.previewImage} />
+        ) : (
+          <View style={styles.noImageBox}>
+            <Text style={styles.noImageText}>Aucune photo prise</Text>
+          </View>
+        )}
+
+        <Pressable style={styles.secondaryBtn} onPress={takePhoto}>
+          <Text style={styles.secondaryBtnText}>
+            {imageUri ? "Reprendre la photo" : "Prendre une photo"}
+          </Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.section}>
         <View style={styles.rowBetween}>
           <Text style={styles.label}>GPS *</Text>
           <Pressable
@@ -564,11 +788,14 @@ export default function CollectProviderScreen({ navigation }: Props) {
       </View>
 
       <Pressable
-        style={[styles.primaryBtn, (!canSubmit || saving) && styles.disabledBtn]}
+        style={[
+          styles.primaryBtn,
+          (!canSubmit || saving || uploadingImage) && styles.disabledBtn,
+        ]}
         onPress={saveProvider}
-        disabled={!canSubmit || saving}
+        disabled={!canSubmit || saving || uploadingImage}
       >
-        {saving ? (
+        {saving || uploadingImage ? (
           <ActivityIndicator color="#000" />
         ) : (
           <Text style={styles.primaryBtnText}>Enregistrer</Text>
@@ -639,6 +866,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
   },
+  warningBox: {
+    backgroundColor: "#1a1200",
+    borderColor: "#5b4300",
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 18,
+  },
+  warningTitle: {
+    color: "#ffcc66",
+    fontWeight: "800",
+    marginBottom: 6,
+  },
+  warningText: {
+    color: "#f5deb3",
+  },
   section: {
     marginBottom: 16,
   },
@@ -696,19 +939,6 @@ const styles = StyleSheet.create({
   chipTextSelected: {
     color: "#000",
   },
-  primaryBtn: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 8,
-  },
-  primaryBtnText: {
-    color: "#000",
-    fontWeight: "800",
-    fontSize: 16,
-  },
   secondaryBtn: {
     backgroundColor: "#111",
     borderColor: "#333",
@@ -723,6 +953,38 @@ const styles = StyleSheet.create({
   secondaryBtnText: {
     color: "#fff",
     fontWeight: "700",
+  },
+  noImageBox: {
+    height: 180,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#222",
+    backgroundColor: "#0b0b0b",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10,
+  },
+  noImageText: {
+    color: "#777",
+  },
+  previewImage: {
+    width: "100%",
+    height: 220,
+    borderRadius: 12,
+    marginBottom: 10,
+  },
+  primaryBtn: {
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 8,
+  },
+  primaryBtnText: {
+    color: "#000",
+    fontWeight: "800",
+    fontSize: 16,
   },
   disabledBtn: {
     opacity: 0.5,
