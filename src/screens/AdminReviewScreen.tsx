@@ -60,6 +60,7 @@ export default function AdminReviewScreen({ navigation }: Props) {
 
       setItems((data || []) as PendingItem[]);
     } catch (e: any) {
+      console.log("LOAD PENDING ERROR =", e);
       Alert.alert("Erreur", e?.message || "Impossible de charger les fiches.");
     } finally {
       setLoading(false);
@@ -77,89 +78,37 @@ export default function AdminReviewScreen({ navigation }: Props) {
 
       await new Promise((resolve) => setTimeout(resolve, 80));
 
-      const providerPayload = {
-        provider_id: item.id,
-        country: item.country,
-        type: item.type,
-        category: item.category,
-        name: item.name,
-        phone: item.phone,
-        city: item.city,
-        district: item.district,
-        address: item.address,
-        lat: item.lat,
-        lng: item.lng,
-        description_short: item.description_short,
-        notes: item.notes,
-        proof_image_url: item.proof_image_url,
-        source_pending_id: item.id,
-        validated_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-
-      console.log("VALIDATE -> providerPayload =", providerPayload);
-
-      setActionMessage("Insertion dans providers...");
-      const { data: insertedProvider, error: insertError } = await supabase
-        .from("providers")
-        .insert(providerPayload)
-        .select("id,name")
-        .single();
-
-      if (insertError) {
-        console.log("PROVIDERS INSERT ERROR =", {
-          message: insertError.message,
-          details: insertError.details,
-          hint: insertError.hint,
-          code: insertError.code,
-        });
-
-        throw new Error(
-          [
-            insertError.message,
-            insertError.details,
-            insertError.hint,
-            insertError.code ? `(code: ${insertError.code})` : null,
-          ]
-            .filter(Boolean)
-            .join(" | ")
-        );
-      }
-
-      console.log("PROVIDERS INSERT OK =", insertedProvider);
-
-      setActionMessage("Mise à jour du statut pending...");
-      const { data: updatedPending, error: updateError } = await supabase
+      const { data, error } = await supabase
         .from("providers_pending")
         .update({ status: "validated" })
         .eq("id", item.id)
         .select("id,status")
         .single();
 
-      if (updateError) {
-        console.log("PENDING UPDATE ERROR =", {
-          message: updateError.message,
-          details: updateError.details,
-          hint: updateError.hint,
-          code: updateError.code,
+      if (error) {
+        console.log("VALIDATE UPDATE ERROR =", {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
         });
 
         throw new Error(
           [
-            updateError.message,
-            updateError.details,
-            updateError.hint,
-            updateError.code ? `(code: ${updateError.code})` : null,
+            error.message,
+            error.details,
+            error.hint,
+            error.code ? `(code: ${error.code})` : null,
           ]
             .filter(Boolean)
             .join(" | ")
         );
       }
 
-      console.log("PENDING UPDATE OK =", updatedPending);
+      console.log("VALIDATE UPDATE OK =", data);
 
       setActionMessage("Validation terminée.");
-      Alert.alert("Succès", "Fiche validée et copiée dans providers.");
+      Alert.alert("Succès", "La fiche a été validée.");
 
       await loadItems();
       setActionMessage("");
@@ -202,7 +151,12 @@ export default function AdminReviewScreen({ navigation }: Props) {
         });
 
         throw new Error(
-          [error.message, error.details, error.hint, error.code]
+          [
+            error.message,
+            error.details,
+            error.hint,
+            error.code ? `(code: ${error.code})` : null,
+          ]
             .filter(Boolean)
             .join(" | ")
         );
@@ -260,7 +214,11 @@ export default function AdminReviewScreen({ navigation }: Props) {
       `${item.name}\n${item.city} - ${item.district}`,
       [
         { text: "Annuler", style: "cancel" },
-        { text: "Rejeter", style: "destructive", onPress: () => void rejectItem(item) },
+        {
+          text: "Rejeter",
+          style: "destructive",
+          onPress: () => void rejectItem(item),
+        },
       ]
     );
   };
@@ -278,7 +236,9 @@ export default function AdminReviewScreen({ navigation }: Props) {
       </View>
 
       <Text style={styles.title}>Admin validation</Text>
-      <Text style={styles.subtitle}>Fiches en attente dans providers_pending</Text>
+      <Text style={styles.subtitle}>
+        Fiches en attente dans providers_pending
+      </Text>
 
       {actionMessage ? (
         <View style={styles.statusBox}>
@@ -311,21 +271,33 @@ export default function AdminReviewScreen({ navigation }: Props) {
                   {item.type} • {item.city}, {item.district}
                 </Text>
 
-                {item.phone ? <Text style={styles.meta}>📞 {item.phone}</Text> : null}
-                {item.address ? <Text style={styles.meta}>📍 {item.address}</Text> : null}
+                {item.phone ? (
+                  <Text style={styles.meta}>📞 {item.phone}</Text>
+                ) : null}
+
+                {item.address ? (
+                  <Text style={styles.meta}>📍 {item.address}</Text>
+                ) : null}
+
                 <Text style={styles.meta}>
                   GPS: {item.lat}, {item.lng}
                 </Text>
 
                 {item.collector_name ? (
-                  <Text style={styles.meta}>Enquêteur: {item.collector_name}</Text>
+                  <Text style={styles.meta}>
+                    Enquêteur: {item.collector_name}
+                  </Text>
                 ) : null}
 
                 {item.description_short ? (
-                  <Text style={styles.meta}>Description: {item.description_short}</Text>
+                  <Text style={styles.meta}>
+                    Description: {item.description_short}
+                  </Text>
                 ) : null}
 
-                {item.notes ? <Text style={styles.meta}>Notes: {item.notes}</Text> : null}
+                {item.notes ? (
+                  <Text style={styles.meta}>Notes: {item.notes}</Text>
+                ) : null}
 
                 {item.possible_duplicate ? (
                   <View style={styles.warningBox}>
@@ -337,7 +309,10 @@ export default function AdminReviewScreen({ navigation }: Props) {
                 ) : null}
 
                 {item.proof_image_url ? (
-                  <Image source={{ uri: item.proof_image_url }} style={styles.previewImage} />
+                  <Image
+                    source={{ uri: item.proof_image_url }}
+                    style={styles.previewImage}
+                  />
                 ) : (
                   <View style={styles.noImageBox}>
                     <Text style={styles.noImageText}>Pas de photo preuve</Text>
