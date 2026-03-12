@@ -9,7 +9,6 @@ import {
   ScrollView,
   ActivityIndicator,
   Image,
-  Platform,
 } from "react-native";
 import * as Location from "expo-location";
 import * as ImagePicker from "expo-image-picker";
@@ -240,13 +239,14 @@ export default function CollectProviderScreen({ navigation }: Props) {
             updateField("address", addressGuess);
           }
         }
-      } catch {
-        // non bloquant
+      } catch (reverseError) {
+        console.log("REVERSE GEOCODE ERROR =", reverseError);
       }
 
       setGpsStatus("Position récupérée");
       setGpsReady(true);
     } catch (e: any) {
+      console.log("GPS ERROR =", e);
       setGpsStatus("Erreur GPS");
       Alert.alert(
         "Erreur GPS",
@@ -258,7 +258,9 @@ export default function CollectProviderScreen({ navigation }: Props) {
   };
 
   useEffect(() => {
-    getCurrentLocation().catch(() => {});
+    getCurrentLocation().catch((e) => {
+      console.log("INIT GPS ERROR =", e);
+    });
   }, []);
 
   const takePhoto = async () => {
@@ -285,6 +287,7 @@ export default function CollectProviderScreen({ navigation }: Props) {
 
       setImageUri(asset.uri);
     } catch (e: any) {
+      console.log("PHOTO ERROR =", e);
       Alert.alert("Erreur photo", e?.message || "Impossible de prendre la photo.");
     }
   };
@@ -298,8 +301,7 @@ export default function CollectProviderScreen({ navigation }: Props) {
       const response = await fetch(imageUri);
       const blob = await response.blob();
 
-      const ext =
-        imageUri.toLowerCase().includes(".png") ? "png" : "jpg";
+      const ext = imageUri.toLowerCase().includes(".png") ? "png" : "jpg";
 
       const fileName = `${form.country}/${Date.now()}-${Math.random()
         .toString(36)
@@ -320,6 +322,7 @@ export default function CollectProviderScreen({ navigation }: Props) {
 
       return data?.publicUrl || null;
     } catch (e: any) {
+      console.log("UPLOAD IMAGE ERROR =", e);
       throw new Error(e?.message || "Upload photo impossible.");
     } finally {
       setUploadingImage(false);
@@ -378,7 +381,8 @@ export default function CollectProviderScreen({ navigation }: Props) {
         possibleDuplicate: true,
         duplicateNote: note,
       };
-    } catch {
+    } catch (e) {
+      console.log("DUPLICATE CHECK ERROR =", e);
       return { possibleDuplicate: false, duplicateNote: null };
     }
   };
@@ -430,6 +434,8 @@ export default function CollectProviderScreen({ navigation }: Props) {
         status: "pending",
       };
 
+      console.log("PAYLOAD TO INSERT =", payload);
+
       const { error } = await supabase.from("providers_pending").insert(payload);
 
       if (error) throw error;
@@ -446,9 +452,10 @@ export default function CollectProviderScreen({ navigation }: Props) {
       resetForm();
       await getCurrentLocation();
     } catch (e: any) {
+      console.log("SUPABASE INSERT ERROR =", e);
       Alert.alert(
-        "Erreur",
-        e?.message || "Impossible d’enregistrer la structure."
+        "Erreur Supabase",
+        e?.message || JSON.stringify(e) || "Erreur inconnue"
       );
     } finally {
       setSaving(false);
@@ -536,108 +543,33 @@ export default function CollectProviderScreen({ navigation }: Props) {
       <View style={styles.section}>
         <Text style={styles.label}>Pays *</Text>
         <View style={styles.rowWrap}>
-          <ChoiceChip
-            label="Togo"
-            value="TG"
-            selectedValue={form.country}
-            onPress={(v) => updateField("country", v)}
-          />
-          <ChoiceChip
-            label="Bénin"
-            value="BJ"
-            selectedValue={form.country}
-            onPress={(v) => updateField("country", v)}
-          />
-          <ChoiceChip
-            label="Sénégal"
-            value="SN"
-            selectedValue={form.country}
-            onPress={(v) => updateField("country", v)}
-          />
+          <ChoiceChip label="Togo" value="TG" selectedValue={form.country} onPress={(v) => updateField("country", v)} />
+          <ChoiceChip label="Bénin" value="BJ" selectedValue={form.country} onPress={(v) => updateField("country", v)} />
+          <ChoiceChip label="Sénégal" value="SN" selectedValue={form.country} onPress={(v) => updateField("country", v)} />
         </View>
       </View>
 
       <View style={styles.section}>
         <Text style={styles.label}>Type *</Text>
         <View style={styles.rowWrap}>
-          <ChoiceChip
-            label="Pharmacie"
-            value="pharmacy"
-            selectedValue={form.type}
-            onPress={applyTypePreset}
-          />
-          <ChoiceChip
-            label="Clinique"
-            value="clinic"
-            selectedValue={form.type}
-            onPress={applyTypePreset}
-          />
-          <ChoiceChip
-            label="Restaurant"
-            value="restaurant"
-            selectedValue={form.type}
-            onPress={applyTypePreset}
-          />
-          <ChoiceChip
-            label="Hôtel"
-            value="hotel"
-            selectedValue={form.type}
-            onPress={applyTypePreset}
-          />
-          <ChoiceChip
-            label="Administratif"
-            value="administrative"
-            selectedValue={form.type}
-            onPress={applyTypePreset}
-          />
-          <ChoiceChip
-            label="Autre"
-            value="other"
-            selectedValue={form.type}
-            onPress={applyTypePreset}
-          />
+          <ChoiceChip label="Pharmacie" value="pharmacy" selectedValue={form.type} onPress={applyTypePreset} />
+          <ChoiceChip label="Clinique" value="clinic" selectedValue={form.type} onPress={applyTypePreset} />
+          <ChoiceChip label="Restaurant" value="restaurant" selectedValue={form.type} onPress={applyTypePreset} />
+          <ChoiceChip label="Hôtel" value="hotel" selectedValue={form.type} onPress={applyTypePreset} />
+          <ChoiceChip label="Administratif" value="administrative" selectedValue={form.type} onPress={applyTypePreset} />
+          <ChoiceChip label="Autre" value="other" selectedValue={form.type} onPress={applyTypePreset} />
         </View>
       </View>
 
       <View style={styles.section}>
         <Text style={styles.label}>Catégorie *</Text>
         <View style={styles.rowWrap}>
-          <ChoiceChip
-            label="Santé"
-            value="health"
-            selectedValue={form.category}
-            onPress={(v) => updateField("category", v)}
-          />
-          <ChoiceChip
-            label="Administratif"
-            value="administrative"
-            selectedValue={form.category}
-            onPress={(v) => updateField("category", v)}
-          />
-          <ChoiceChip
-            label="Alimentation"
-            value="food"
-            selectedValue={form.category}
-            onPress={(v) => updateField("category", v)}
-          />
-          <ChoiceChip
-            label="Hébergement"
-            value="lodging"
-            selectedValue={form.category}
-            onPress={(v) => updateField("category", v)}
-          />
-          <ChoiceChip
-            label="Commerce"
-            value="commerce"
-            selectedValue={form.category}
-            onPress={(v) => updateField("category", v)}
-          />
-          <ChoiceChip
-            label="Service"
-            value="service"
-            selectedValue={form.category}
-            onPress={(v) => updateField("category", v)}
-          />
+          <ChoiceChip label="Santé" value="health" selectedValue={form.category} onPress={(v) => updateField("category", v)} />
+          <ChoiceChip label="Administratif" value="administrative" selectedValue={form.category} onPress={(v) => updateField("category", v)} />
+          <ChoiceChip label="Alimentation" value="food" selectedValue={form.category} onPress={(v) => updateField("category", v)} />
+          <ChoiceChip label="Hébergement" value="lodging" selectedValue={form.category} onPress={(v) => updateField("category", v)} />
+          <ChoiceChip label="Commerce" value="commerce" selectedValue={form.category} onPress={(v) => updateField("category", v)} />
+          <ChoiceChip label="Service" value="service" selectedValue={form.category} onPress={(v) => updateField("category", v)} />
         </View>
       </View>
 
