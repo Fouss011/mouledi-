@@ -9,6 +9,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Image,
+  Platform,
 } from "react-native";
 import * as Location from "expo-location";
 import * as ImagePicker from "expo-image-picker";
@@ -147,6 +148,9 @@ export default function CollectProviderScreen({ navigation }: Props) {
   const [uploadingImage, setUploadingImage] = useState(false);
 
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
+  const [saveMessage, setSaveMessage] = useState<string>("");
+
+  const isWeb = Platform.OS === "web";
 
   const updateField = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -297,6 +301,7 @@ export default function CollectProviderScreen({ navigation }: Props) {
 
     try {
       setUploadingImage(true);
+      setSaveMessage("Préparation de la photo...");
 
       const response = await fetch(imageUri);
       const blob = await response.blob();
@@ -307,6 +312,7 @@ export default function CollectProviderScreen({ navigation }: Props) {
         .toString(36)
         .slice(2)}.${ext}`;
 
+      setSaveMessage("Envoi de la photo...");
       const { error } = await supabase.storage
         .from("provider-proof")
         .upload(fileName, blob, {
@@ -314,7 +320,13 @@ export default function CollectProviderScreen({ navigation }: Props) {
           upsert: false,
         });
 
-      if (error) throw error;
+      if (error) {
+        console.log("STORAGE UPLOAD ERROR =", {
+          message: error.message,
+          name: error.name,
+        });
+        throw error;
+      }
 
       const { data } = supabase.storage
         .from("provider-proof")
@@ -410,8 +422,13 @@ export default function CollectProviderScreen({ navigation }: Props) {
 
     try {
       setSaving(true);
+      setSaveMessage("Début de l’enregistrement...");
+
+      await new Promise((resolve) => setTimeout(resolve, 80));
 
       const proofImageUrl = await uploadProofImage();
+
+      setSaveMessage("Recherche de doublon...");
       const duplicateCheck = await detectDuplicate();
 
       const payload = {
@@ -435,10 +452,31 @@ export default function CollectProviderScreen({ navigation }: Props) {
       };
 
       console.log("PAYLOAD TO INSERT =", payload);
+      setSaveMessage("Insertion dans Supabase...");
 
-      const { error } = await supabase.from("providers_pending").insert(payload);
+      const { data, error } = await supabase
+        .from("providers_pending")
+        .insert(payload)
+        .select("id,name,created_at")
+        .single();
 
-      if (error) throw error;
+      if (error) {
+        console.log("SUPABASE RAW ERROR =", {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+        });
+
+        throw new Error(
+          [error.message, error.details, error.hint, error.code]
+            .filter(Boolean)
+            .join(" | ")
+        );
+      }
+
+      console.log("INSERT OK =", data);
+      setSaveMessage("Enregistrement terminé.");
 
       if (duplicateCheck.possibleDuplicate) {
         Alert.alert(
@@ -451,20 +489,21 @@ export default function CollectProviderScreen({ navigation }: Props) {
 
       resetForm();
       await getCurrentLocation();
+      setSaveMessage("");
     } catch (e: any) {
       console.log("SUPABASE INSERT ERROR =", e);
-      Alert.alert(
-        "Erreur Supabase",
-        e?.message || JSON.stringify(e) || "Erreur inconnue"
-      );
+
+      const finalMessage =
+        e?.message ||
+        e?.error_description ||
+        JSON.stringify(e) ||
+        "Erreur inconnue";
+
+      setSaveMessage(`Erreur: ${finalMessage}`);
+      Alert.alert("Erreur Supabase", finalMessage);
     } finally {
       setSaving(false);
     }
-  };
-
-  const previewDuplicate = async () => {
-    const check = await detectDuplicate();
-    setDuplicateWarning(check.duplicateNote);
   };
 
   const saveProvider = async () => {
@@ -491,18 +530,26 @@ export default function CollectProviderScreen({ navigation }: Props) {
       return;
     }
 
-    await previewDuplicate();
+    const check = await detectDuplicate();
+    setDuplicateWarning(check.duplicateNote);
 
-    Alert.alert(
-      "Confirmer l’enregistrement",
-      `Lieu : ${form.name.trim()}\nVille : ${form.city.trim()}\nQuartier : ${form.district.trim()}${
-        imageUri ? "\nPhoto : oui" : "\nPhoto : non"
-      }`,
-      [
-        { text: "Annuler", style: "cancel" },
-        { text: "Enregistrer", onPress: doSave },
-      ]
-    );
+    const summary = `Lieu : ${form.name.trim()}
+Ville : ${form.city.trim()}
+Quartier : ${form.district.trim()}
+Photo : ${imageUri ? "oui" : "non"}${
+      check.duplicateNote ? `\n\n${check.duplicateNote}` : ""
+    }`;
+
+    if (isWeb) {
+      console.log("WEB MODE -> direct save");
+      await doSave();
+      return;
+    }
+
+    Alert.alert("Confirmer l’enregistrement", summary, [
+      { text: "Annuler", style: "cancel" },
+      { text: "Enregistrer", onPress: () => void doSave() },
+    ]);
   };
 
   return (
@@ -543,33 +590,108 @@ export default function CollectProviderScreen({ navigation }: Props) {
       <View style={styles.section}>
         <Text style={styles.label}>Pays *</Text>
         <View style={styles.rowWrap}>
-          <ChoiceChip label="Togo" value="TG" selectedValue={form.country} onPress={(v) => updateField("country", v)} />
-          <ChoiceChip label="Bénin" value="BJ" selectedValue={form.country} onPress={(v) => updateField("country", v)} />
-          <ChoiceChip label="Sénégal" value="SN" selectedValue={form.country} onPress={(v) => updateField("country", v)} />
+          <ChoiceChip
+            label="Togo"
+            value="TG"
+            selectedValue={form.country}
+            onPress={(v) => updateField("country", v)}
+          />
+          <ChoiceChip
+            label="Bénin"
+            value="BJ"
+            selectedValue={form.country}
+            onPress={(v) => updateField("country", v)}
+          />
+          <ChoiceChip
+            label="Sénégal"
+            value="SN"
+            selectedValue={form.country}
+            onPress={(v) => updateField("country", v)}
+          />
         </View>
       </View>
 
       <View style={styles.section}>
         <Text style={styles.label}>Type *</Text>
         <View style={styles.rowWrap}>
-          <ChoiceChip label="Pharmacie" value="pharmacy" selectedValue={form.type} onPress={applyTypePreset} />
-          <ChoiceChip label="Clinique" value="clinic" selectedValue={form.type} onPress={applyTypePreset} />
-          <ChoiceChip label="Restaurant" value="restaurant" selectedValue={form.type} onPress={applyTypePreset} />
-          <ChoiceChip label="Hôtel" value="hotel" selectedValue={form.type} onPress={applyTypePreset} />
-          <ChoiceChip label="Administratif" value="administrative" selectedValue={form.type} onPress={applyTypePreset} />
-          <ChoiceChip label="Autre" value="other" selectedValue={form.type} onPress={applyTypePreset} />
+          <ChoiceChip
+            label="Pharmacie"
+            value="pharmacy"
+            selectedValue={form.type}
+            onPress={applyTypePreset}
+          />
+          <ChoiceChip
+            label="Clinique"
+            value="clinic"
+            selectedValue={form.type}
+            onPress={applyTypePreset}
+          />
+          <ChoiceChip
+            label="Restaurant"
+            value="restaurant"
+            selectedValue={form.type}
+            onPress={applyTypePreset}
+          />
+          <ChoiceChip
+            label="Hôtel"
+            value="hotel"
+            selectedValue={form.type}
+            onPress={applyTypePreset}
+          />
+          <ChoiceChip
+            label="Administratif"
+            value="administrative"
+            selectedValue={form.type}
+            onPress={applyTypePreset}
+          />
+          <ChoiceChip
+            label="Autre"
+            value="other"
+            selectedValue={form.type}
+            onPress={applyTypePreset}
+          />
         </View>
       </View>
 
       <View style={styles.section}>
         <Text style={styles.label}>Catégorie *</Text>
         <View style={styles.rowWrap}>
-          <ChoiceChip label="Santé" value="health" selectedValue={form.category} onPress={(v) => updateField("category", v)} />
-          <ChoiceChip label="Administratif" value="administrative" selectedValue={form.category} onPress={(v) => updateField("category", v)} />
-          <ChoiceChip label="Alimentation" value="food" selectedValue={form.category} onPress={(v) => updateField("category", v)} />
-          <ChoiceChip label="Hébergement" value="lodging" selectedValue={form.category} onPress={(v) => updateField("category", v)} />
-          <ChoiceChip label="Commerce" value="commerce" selectedValue={form.category} onPress={(v) => updateField("category", v)} />
-          <ChoiceChip label="Service" value="service" selectedValue={form.category} onPress={(v) => updateField("category", v)} />
+          <ChoiceChip
+            label="Santé"
+            value="health"
+            selectedValue={form.category}
+            onPress={(v) => updateField("category", v)}
+          />
+          <ChoiceChip
+            label="Administratif"
+            value="administrative"
+            selectedValue={form.category}
+            onPress={(v) => updateField("category", v)}
+          />
+          <ChoiceChip
+            label="Alimentation"
+            value="food"
+            selectedValue={form.category}
+            onPress={(v) => updateField("category", v)}
+          />
+          <ChoiceChip
+            label="Hébergement"
+            value="lodging"
+            selectedValue={form.category}
+            onPress={(v) => updateField("category", v)}
+          />
+          <ChoiceChip
+            label="Commerce"
+            value="commerce"
+            selectedValue={form.category}
+            onPress={(v) => updateField("category", v)}
+          />
+          <ChoiceChip
+            label="Service"
+            value="service"
+            selectedValue={form.category}
+            onPress={(v) => updateField("category", v)}
+          />
         </View>
       </View>
 
@@ -719,16 +841,26 @@ export default function CollectProviderScreen({ navigation }: Props) {
         />
       </View>
 
+      {saveMessage ? (
+        <View style={styles.statusBox}>
+          <Text style={styles.statusText}>{saveMessage}</Text>
+        </View>
+      ) : null}
+
       <Pressable
-        style={[
+        style={({ pressed }) => [
           styles.primaryBtn,
+          pressed && styles.primaryBtnPressed,
           (!canSubmit || saving || uploadingImage) && styles.disabledBtn,
         ]}
-        onPress={saveProvider}
+        onPress={() => void saveProvider()}
         disabled={!canSubmit || saving || uploadingImage}
       >
         {saving || uploadingImage ? (
-          <ActivityIndicator color="#000" />
+          <View style={styles.btnRow}>
+            <ActivityIndicator color="#000" />
+            <Text style={styles.primaryBtnTextLoading}>Enregistrement...</Text>
+          </View>
         ) : (
           <Text style={styles.primaryBtnText}>Enregistrer</Text>
         )}
@@ -905,6 +1037,20 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 10,
   },
+  statusBox: {
+    backgroundColor: "#0b0b0b",
+    borderColor: "#222",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 4,
+    marginBottom: 12,
+  },
+  statusText: {
+    color: "#bbb",
+    fontSize: 13,
+  },
   primaryBtn: {
     backgroundColor: "#fff",
     borderRadius: 14,
@@ -913,7 +1059,22 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginTop: 8,
   },
+  primaryBtnPressed: {
+    transform: [{ scale: 0.985 }],
+    opacity: 0.9,
+  },
+  btnRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
   primaryBtnText: {
+    color: "#000",
+    fontWeight: "800",
+    fontSize: 16,
+  },
+  primaryBtnTextLoading: {
     color: "#000",
     fontWeight: "800",
     fontSize: 16,
