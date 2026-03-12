@@ -8,6 +8,7 @@ import {
   FlatList,
   Alert,
   Image,
+  Platform,
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { supabase } from "../lib/supabase";
@@ -41,6 +42,9 @@ export default function AdminReviewScreen({ navigation }: Props) {
   const [items, setItems] = useState<PendingItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string>("");
+
+  const isWeb = Platform.OS === "web";
 
   const loadItems = useCallback(async () => {
     try {
@@ -69,6 +73,9 @@ export default function AdminReviewScreen({ navigation }: Props) {
   const validateItem = async (item: PendingItem) => {
     try {
       setBusyId(item.id);
+      setActionMessage(`Validation de ${item.name}...`);
+
+      await new Promise((resolve) => setTimeout(resolve, 80));
 
       const providerPayload = {
         provider_id: item.id,
@@ -90,23 +97,83 @@ export default function AdminReviewScreen({ navigation }: Props) {
         updated_at: new Date().toISOString(),
       };
 
-      const { error: insertError } = await supabase
+      console.log("VALIDATE -> providerPayload =", providerPayload);
+
+      setActionMessage("Insertion dans providers...");
+      const { data: insertedProvider, error: insertError } = await supabase
         .from("providers")
-        .insert(providerPayload);
+        .insert(providerPayload)
+        .select("id,name")
+        .single();
 
-      if (insertError) throw insertError;
+      if (insertError) {
+        console.log("PROVIDERS INSERT ERROR =", {
+          message: insertError.message,
+          details: insertError.details,
+          hint: insertError.hint,
+          code: insertError.code,
+        });
 
-      const { error: updateError } = await supabase
+        throw new Error(
+          [
+            insertError.message,
+            insertError.details,
+            insertError.hint,
+            insertError.code ? `(code: ${insertError.code})` : null,
+          ]
+            .filter(Boolean)
+            .join(" | ")
+        );
+      }
+
+      console.log("PROVIDERS INSERT OK =", insertedProvider);
+
+      setActionMessage("Mise à jour du statut pending...");
+      const { data: updatedPending, error: updateError } = await supabase
         .from("providers_pending")
         .update({ status: "validated" })
-        .eq("id", item.id);
+        .eq("id", item.id)
+        .select("id,status")
+        .single();
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        console.log("PENDING UPDATE ERROR =", {
+          message: updateError.message,
+          details: updateError.details,
+          hint: updateError.hint,
+          code: updateError.code,
+        });
 
+        throw new Error(
+          [
+            updateError.message,
+            updateError.details,
+            updateError.hint,
+            updateError.code ? `(code: ${updateError.code})` : null,
+          ]
+            .filter(Boolean)
+            .join(" | ")
+        );
+      }
+
+      console.log("PENDING UPDATE OK =", updatedPending);
+
+      setActionMessage("Validation terminée.");
       Alert.alert("Succès", "Fiche validée et copiée dans providers.");
+
       await loadItems();
+      setActionMessage("");
     } catch (e: any) {
-      Alert.alert("Erreur validation", e?.message || "Validation impossible.");
+      console.log("VALIDATION ERROR =", e);
+
+      const finalMessage =
+        e?.message ||
+        e?.error_description ||
+        JSON.stringify(e) ||
+        "Validation impossible.";
+
+      setActionMessage(`Erreur: ${finalMessage}`);
+      Alert.alert("Erreur validation", finalMessage);
     } finally {
       setBusyId(null);
     }
@@ -115,41 +182,85 @@ export default function AdminReviewScreen({ navigation }: Props) {
   const rejectItem = async (item: PendingItem) => {
     try {
       setBusyId(item.id);
+      setActionMessage(`Rejet de ${item.name}...`);
 
-      const { error } = await supabase
+      await new Promise((resolve) => setTimeout(resolve, 80));
+
+      const { data, error } = await supabase
         .from("providers_pending")
         .update({ status: "rejected" })
-        .eq("id", item.id);
+        .eq("id", item.id)
+        .select("id,status")
+        .single();
 
-      if (error) throw error;
+      if (error) {
+        console.log("REJECT UPDATE ERROR =", {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+        });
 
+        throw new Error(
+          [error.message, error.details, error.hint, error.code]
+            .filter(Boolean)
+            .join(" | ")
+        );
+      }
+
+      console.log("REJECT UPDATE OK =", data);
+
+      setActionMessage("Rejet terminé.");
       Alert.alert("Rejetée", "La fiche a été rejetée.");
+
       await loadItems();
+      setActionMessage("");
     } catch (e: any) {
-      Alert.alert("Erreur rejet", e?.message || "Rejet impossible.");
+      console.log("REJECT ERROR =", e);
+
+      const finalMessage =
+        e?.message ||
+        e?.error_description ||
+        JSON.stringify(e) ||
+        "Rejet impossible.";
+
+      setActionMessage(`Erreur: ${finalMessage}`);
+      Alert.alert("Erreur rejet", finalMessage);
     } finally {
       setBusyId(null);
     }
   };
 
-  const confirmValidate = (item: PendingItem) => {
+  const confirmValidate = async (item: PendingItem) => {
+    if (isWeb) {
+      console.log("WEB MODE -> direct validate");
+      await validateItem(item);
+      return;
+    }
+
     Alert.alert(
       "Valider cette fiche ?",
       `${item.name}\n${item.city} - ${item.district}`,
       [
         { text: "Annuler", style: "cancel" },
-        { text: "Valider", onPress: () => validateItem(item) },
+        { text: "Valider", onPress: () => void validateItem(item) },
       ]
     );
   };
 
-  const confirmReject = (item: PendingItem) => {
+  const confirmReject = async (item: PendingItem) => {
+    if (isWeb) {
+      console.log("WEB MODE -> direct reject");
+      await rejectItem(item);
+      return;
+    }
+
     Alert.alert(
       "Rejeter cette fiche ?",
       `${item.name}\n${item.city} - ${item.district}`,
       [
         { text: "Annuler", style: "cancel" },
-        { text: "Rejeter", style: "destructive", onPress: () => rejectItem(item) },
+        { text: "Rejeter", style: "destructive", onPress: () => void rejectItem(item) },
       ]
     );
   };
@@ -161,13 +272,19 @@ export default function AdminReviewScreen({ navigation }: Props) {
           <Text style={styles.backBtnText}>← Retour</Text>
         </Pressable>
 
-        <Pressable style={styles.reloadBtn} onPress={loadItems}>
+        <Pressable style={styles.reloadBtn} onPress={() => void loadItems()}>
           <Text style={styles.reloadBtnText}>Rafraîchir</Text>
         </Pressable>
       </View>
 
       <Text style={styles.title}>Admin validation</Text>
       <Text style={styles.subtitle}>Fiches en attente dans providers_pending</Text>
+
+      {actionMessage ? (
+        <View style={styles.statusBox}>
+          <Text style={styles.statusText}>{actionMessage}</Text>
+        </View>
+      ) : null}
 
       {loading ? (
         <View style={styles.centered}>
@@ -229,8 +346,13 @@ export default function AdminReviewScreen({ navigation }: Props) {
 
                 <View style={styles.actionsRow}>
                   <Pressable
-                    style={[styles.actionBtn, styles.validateBtn, busy && styles.disabledBtn]}
-                    onPress={() => confirmValidate(item)}
+                    style={({ pressed }) => [
+                      styles.actionBtn,
+                      styles.validateBtn,
+                      pressed && styles.pressedBtn,
+                      busy && styles.disabledBtn,
+                    ]}
+                    onPress={() => void confirmValidate(item)}
                     disabled={busy}
                   >
                     {busy ? (
@@ -241,8 +363,13 @@ export default function AdminReviewScreen({ navigation }: Props) {
                   </Pressable>
 
                   <Pressable
-                    style={[styles.actionBtn, styles.rejectBtn, busy && styles.disabledBtn]}
-                    onPress={() => confirmReject(item)}
+                    style={({ pressed }) => [
+                      styles.actionBtn,
+                      styles.rejectBtn,
+                      pressed && styles.pressedBtn,
+                      busy && styles.disabledBtn,
+                    ]}
+                    onPress={() => void confirmReject(item)}
                     disabled={busy}
                   >
                     <Text style={styles.rejectText}>Rejeter</Text>
@@ -303,6 +430,19 @@ const styles = StyleSheet.create({
   subtitle: {
     color: "#888",
     marginBottom: 16,
+  },
+  statusBox: {
+    backgroundColor: "#0b0b0b",
+    borderColor: "#222",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 14,
+  },
+  statusText: {
+    color: "#bbb",
+    fontSize: 13,
   },
   centered: {
     marginTop: 40,
@@ -385,6 +525,10 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: "center",
     justifyContent: "center",
+  },
+  pressedBtn: {
+    transform: [{ scale: 0.985 }],
+    opacity: 0.92,
   },
   validateBtn: {
     backgroundColor: "#fff",
