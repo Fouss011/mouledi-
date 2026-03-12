@@ -8,6 +8,7 @@ import {
 import HomeScreen from "./src/screens/HomeScreen";
 import ResultsScreen from "./src/screens/ResultsScreen";
 import CollectProviderScreen from "./src/screens/CollectProviderScreen";
+import AdminReviewScreen from "./src/screens/AdminReviewScreen";
 
 export type RootStackParamList = {
   Home: { autoStartMic?: boolean } | undefined;
@@ -19,6 +20,7 @@ export type RootStackParamList = {
     nearLng?: number;
   };
   CollectProvider: undefined;
+  AdminReview: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -38,6 +40,7 @@ export default function App() {
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="Results" component={ResultsScreen} />
         <Stack.Screen name="CollectProvider" component={CollectProviderScreen} />
+        <Stack.Screen name="AdminReview" component={AdminReviewScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

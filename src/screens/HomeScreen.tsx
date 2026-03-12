@@ -18,7 +18,6 @@ import {
 
 type Props = NativeStackScreenProps<RootStackParamList, "Home">;
 
-/** --- UI AUDIO (mina) helper local --- */
 let currentSound: Audio.Sound | null = null;
 let playSeq = 0;
 
@@ -157,12 +156,9 @@ function pickClearAudioIntent(
 export default function HomeScreen({ navigation, route }: Props) {
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [statusText, setStatusText] = useState<string>("");
-
   const [debugMode, setDebugMode] = useState<boolean>(false);
   const [typed, setTyped] = useState<string>("pharmacie");
-
   const [showFallback, setShowFallback] = useState<boolean>(false);
-
   const [webRec, setWebRec] = useState<MediaRecorder | null>(null);
 
   const isListening = useMemo(() => recording != null || webRec != null, [recording, webRec]);
@@ -229,7 +225,6 @@ export default function HomeScreen({ navigation, route }: Props) {
       setRecording(rec);
       setStatusText("J'écoute...");
     } catch (e: any) {
-      console.log("startRecording error =", e?.name, e?.message || e);
       setRecording(null);
       setStatusText("Erreur enregistrement micro");
       await playUi("repeat_please");
@@ -513,7 +508,7 @@ export default function HomeScreen({ navigation, route }: Props) {
                 await playUi("fallback_pharmacies_or_retry");
                 setStatusText("Choisis Pharmacie ou Clinique, ou réessaie au micro.");
               }
-            } catch (e: any) {
+            } catch {
               setWebRec(null);
               setStatusText("Erreur connexion / serveur");
               await playUi("repeat_please");
@@ -535,7 +530,7 @@ export default function HomeScreen({ navigation, route }: Props) {
       } else {
         await startRecording();
       }
-    } catch (e: any) {
+    } catch {
       setRecording(null);
       setWebRec(null);
       setStatusText("Erreur micro");
@@ -643,9 +638,15 @@ export default function HomeScreen({ navigation, route }: Props) {
         ) : null}
       </View>
 
-      <Pressable onPress={() => navigation.navigate("CollectProvider")} style={styles.collectBtn}>
-        <Text style={styles.collectText}>Accès enquêteur</Text>
-      </Pressable>
+      <View style={styles.bottomLinks}>
+        <Pressable onPress={() => navigation.navigate("CollectProvider")} style={styles.collectBtn}>
+          <Text style={styles.collectText}>Accès enquêteur</Text>
+        </Pressable>
+
+        <Pressable onPress={() => navigation.navigate("AdminReview")} style={styles.collectBtn}>
+          <Text style={styles.collectText}>Admin validation</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -743,8 +744,11 @@ const styles = StyleSheet.create({
   },
   debugText: { color: "#fff", fontWeight: "700" },
 
+  bottomLinks: {
+    gap: 10,
+    marginBottom: 20,
+  },
   collectBtn: {
-    marginTop: 30,
     alignSelf: "center",
     paddingVertical: 8,
     paddingHorizontal: 14,
@@ -752,7 +756,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#222",
     backgroundColor: "#0b0b0b",
-    marginBottom: 20,
   },
   collectText: {
     color: "#777",
