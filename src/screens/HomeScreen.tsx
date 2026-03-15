@@ -775,7 +775,8 @@ export default function HomeScreen({ navigation, route }: Props) {
           <Text style={styles.voiceCmd}>• Moulédji pharmacie</Text>
           <Text style={styles.voiceCmd}>• Moulédji clinique</Text>
           <Text style={styles.voiceCmd}>• Moulédji restaurant</Text>
-          <Text style={styles.voiceCmd}>• Passeport</Text>
+          <Text style={styles.voiceCmd}>• Moulédji passeport</Text>
+          <Text style={styles.voiceCmd}>• Moulédji carte d’identité</Text>
         </View>
 
         {statusText ? <Text style={styles.status}>{statusText}</Text> : null}
@@ -864,17 +865,18 @@ const styles = StyleSheet.create({
   langBtnText: { color: "#fff", fontWeight: "800", fontSize: 16 },
 
   micButton: {
-    width: 156,
-    height: 156,
-    borderRadius: 78,
+    width: 210,
+    height: 210,
+    borderRadius: 105,
     backgroundColor: "#111",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 2,
+    borderWidth: 3,
     borderColor: "#222",
+    marginVertical: 10,
   },
   micActive: { borderColor: "#555" },
-  micText: { fontSize: 54 },
+  micText: { fontSize: 76 },
 
   hint: { color: "#ddd", textAlign: "center", marginTop: 6 },
   status: { color: "#bbb", textAlign: "center", marginTop: 6 },

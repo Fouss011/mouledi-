@@ -753,8 +753,8 @@ export default function ResultsScreen({ navigation, route }: Props) {
         <FlatList
           data={items}
           keyExtractor={(it, idx) => `${it.provider_id ?? it.name}-${idx}`}
-          contentContainerStyle={{ paddingBottom: 30 }}
-          renderItem={({ item }) => {
+          contentContainerStyle={{ paddingBottom: 30, paddingTop: 4 }}
+          renderItem={({ item, index }) => {
             const distanceLine =
               item.distance_km != null
                 ? ` • ${item.distance_km} km`
@@ -765,7 +765,13 @@ export default function ResultsScreen({ navigation, route }: Props) {
             return (
               <Pressable onPress={() => speakNameOnly(item.name)} style={styles.card}>
                 <View style={styles.cardTopRow}>
-                  <Text style={styles.cardTitle}>{item.name}</Text>
+                  <View style={styles.titleWrap}>
+                    <View style={styles.indexBadge}>
+                      <Text style={styles.indexBadgeText}>{index + 1}</Text>
+                    </View>
+
+                    <Text style={styles.cardTitle}>{item.name}</Text>
+                  </View>
 
                   <Pressable
                     onPress={async () => {
@@ -774,7 +780,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
                     }}
                     style={styles.mapBtn}
                   >
-                    <Text style={styles.mapBtnText}>🧭 Itinéraire</Text>
+                    <Text style={styles.mapBtnText}>🗺️</Text>
                   </Pressable>
                 </View>
 
@@ -870,9 +876,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#0b0b0b",
     borderColor: "#222",
     borderWidth: 1,
-    borderRadius: 14,
+    borderRadius: 16,
     padding: 14,
-    marginBottom: 12,
+    marginBottom: 14,
   },
   cardTopRow: {
     flexDirection: "row",
@@ -880,17 +886,39 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 12,
   },
+  titleWrap: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    paddingRight: 8,
+  },
+  indexBadge: {
+    minWidth: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#151515",
+    borderWidth: 1,
+    borderColor: "#333",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 1,
+  },
+  indexBadgeText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "800",
+  },
   cardTitle: {
     color: "#fff",
     fontSize: 16,
     fontWeight: "700",
     flex: 1,
-    paddingRight: 8,
+    lineHeight: 22,
   },
   mapBtn: {
-    minWidth: 110,
-    height: 40,
-    paddingHorizontal: 12,
+    width: 44,
+    height: 44,
     borderRadius: 12,
     backgroundColor: "#111",
     borderWidth: 1,
@@ -899,17 +927,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   mapBtnText: {
-    fontSize: 14,
-    fontWeight: "700",
+    fontSize: 18,
     color: "#fff",
   },
 
-  cardText: { color: "#bbb", marginTop: 6 },
-  cardSub: { color: "#888", marginTop: 6, fontSize: 13 },
-  cardMuted: { color: "#666", marginTop: 10 },
+  cardText: { color: "#bbb", marginTop: 10, lineHeight: 20 },
+  cardSub: { color: "#888", marginTop: 8, fontSize: 13 },
+  cardMuted: { color: "#666", marginTop: 12 },
 
   callBtn: {
-    marginTop: 10,
+    marginTop: 12,
     backgroundColor: "#111",
     borderColor: "#333",
     borderWidth: 1,
