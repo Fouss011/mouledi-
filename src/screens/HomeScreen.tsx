@@ -775,6 +775,7 @@ export default function HomeScreen({ navigation, route }: Props) {
           <Text style={styles.voiceCmd}>• Moulédji pharmacie</Text>
           <Text style={styles.voiceCmd}>• Moulédji clinique</Text>
           <Text style={styles.voiceCmd}>• Moulédji restaurant</Text>
+          <Text style={styles.voiceCmd}>• Moulédji passeport</Text>
         </View>
 
         {statusText ? <Text style={styles.status}>{statusText}</Text> : null}
