@@ -175,6 +175,7 @@ export default function HomeScreen({ navigation, route }: Props) {
   const [showLangPicker, setShowLangPicker] = useState<boolean>(
   !(route.params?.skipLanguagePicker ?? false)
   );
+  const [hasPlayedWelcome, setHasPlayedWelcome] = useState<boolean>(false);
   useEffect(() => {
     if (route.params?.skipLanguagePicker) {
       setShowLangPicker(false);
@@ -197,13 +198,28 @@ export default function HomeScreen({ navigation, route }: Props) {
   }, []);
 
   useEffect(() => {
-    if (!showLangPicker) {
-      playUi("welcome", selectedLang).catch(() => {});
+    const skip = route.params?.skipLanguagePicker ?? false;
+    const auto = route.params?.autoStartMic ?? false;
+
+    if (showLangPicker || skip || auto) {
+      return;
     }
+
+    if (!hasPlayedWelcome) {
+      playUi("welcome", selectedLang).catch(() => {});
+      setHasPlayedWelcome(true);
+    }
+
     return () => {
       stopAllAudio().catch(() => {});
     };
-  }, [showLangPicker, selectedLang]);
+  }, [
+    showLangPicker,
+    selectedLang,
+    hasPlayedWelcome,
+    route.params?.skipLanguagePicker,
+    route.params?.autoStartMic,
+  ]);
 
   const handleTitlePress = () => {
     const next = titleTapCount + 1;
@@ -215,10 +231,11 @@ export default function HomeScreen({ navigation, route }: Props) {
   };
 
   const chooseLanguage = async (lang: UserLang) => {
+    await stopAllAudio();
     setSelectedLang(lang);
     setShowLangPicker(false);
     setStatusText("");
-    await playUi("welcome", lang);
+    setHasPlayedWelcome(false);
   };
 
   const startRecording = async () => {
@@ -651,7 +668,8 @@ export default function HomeScreen({ navigation, route }: Props) {
     if (!auto || showLangPicker) return;
 
     setStatusText("");
-    const t = setTimeout(() => {
+    const t = setTimeout(async () => {
+      await stopAllAudio();
       onPressMic().catch(() => {});
     }, 250);
 
