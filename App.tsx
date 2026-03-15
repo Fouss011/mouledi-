@@ -9,15 +9,20 @@ import HomeScreen from "./src/screens/HomeScreen";
 import ResultsScreen from "./src/screens/ResultsScreen";
 import CollectProviderScreen from "./src/screens/CollectProviderScreen";
 import AdminReviewScreen from "./src/screens/AdminReviewScreen";
+import GuideScreen from "./src/screens/GuideScreen";
 
 export type RootStackParamList = {
   Home: { autoStartMic?: boolean } | undefined;
   Results: {
     queryText: string;
-    intent: "PHARMACY_ON_CALL" | "PHARMACY" | "CLINIC";
+    intent: "PHARMACY_ON_CALL" | "PHARMACY" | "CLINIC" | "RESTAURANT";
     district: string | null;
-    nearLat?: number;
-    nearLng?: number;
+    nearLat?: number | null;
+    nearLng?: number | null;
+  };
+  Guide: {
+    guideKey: "passport" | "cni" | "casier";
+    lang?: "fr" | "mina" | "kabyè";
   };
   CollectProvider: undefined;
   AdminReview: undefined;
@@ -39,6 +44,7 @@ export default function App() {
       >
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="Results" component={ResultsScreen} />
+        <Stack.Screen name="Guide" component={GuideScreen} />
         <Stack.Screen name="CollectProvider" component={CollectProviderScreen} />
         <Stack.Screen name="AdminReview" component={AdminReviewScreen} />
       </Stack.Navigator>

@@ -1,4 +1,3 @@
-// src/screens/ResultsScreen.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, StyleSheet, Pressable, FlatList, Linking, Platform } from "react-native";
 import * as Speech from "expo-speech";
@@ -11,13 +10,13 @@ import {
   searchPharmaciesOnCall,
   searchPharmacies,
   searchClinics,
-  PharmacyItem,
-  sttFromAudio,
-  sttFromBlob,
+  searchRestaurants,
+  ResultItem,
   pingBackend,
   pingStt,
+  sttFromAudio,
+  sttFromBlob,
   BASE_URL,
-  // ✅ intent-audio
   matchIntentFromAudio,
   matchIntentFromBlob,
 } from "../lib/api";
@@ -25,7 +24,6 @@ import { routeQuery } from "../lib/nlu";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Results">;
 
-/** --- UI AUDIO (mina) helper local --- */
 let currentSound: Audio.Sound | null = null;
 let playSeq = 0;
 
@@ -46,7 +44,7 @@ async function stopAllAudio() {
   await stopCurrentSound();
 }
 
-async function playUi(key: string, lang: string = "mina") {
+async function playUi(key: string, lang: "mina" | "fr" | "kabyè" = "mina") {
   const seq = ++playSeq;
 
   try {
@@ -90,9 +88,7 @@ async function playUi(key: string, lang: string = "mina") {
   } catch {}
 }
 
-/** ✅ Localisation robuste (web + mobile) */
 async function getNearCoordsSafe(timeoutMs = 8000): Promise<{ nearLat: number | null; nearLng: number | null }> {
-  // WEB
   if (Platform.OS === "web" && typeof navigator !== "undefined" && (navigator as any).geolocation) {
     return await new Promise((resolve) => {
       let done = false;
@@ -121,7 +117,6 @@ async function getNearCoordsSafe(timeoutMs = 8000): Promise<{ nearLat: number | 
     });
   }
 
-  // MOBILE
   try {
     const perm = await Location.requestForegroundPermissionsAsync();
     if (!perm.granted) return { nearLat: null, nearLng: null };
@@ -138,30 +133,25 @@ async function getNearCoordsSafe(timeoutMs = 8000): Promise<{ nearLat: number | 
   }
 }
 
-/** ✅ INTENT AUDIO helpers */
 type AudioIntentResp = {
   intent: string;
   confidence: number;
   scores?: Array<{ intent: string; score: number; n?: number }>;
 };
 
-function normalizeIntent(i: string): "PHARMACY" | "CLINIC" | "PHARMACY_ON_CALL" | "UNKNOWN" {
+function normalizeIntent(i: string): "PHARMACY" | "CLINIC" | "PHARMACY_ON_CALL" | "RESTAURANT" | "UNKNOWN" {
   const x = (i || "").toUpperCase().trim();
   if (x === "PHARMACY") return "PHARMACY";
   if (x === "CLINIC") return "CLINIC";
   if (x === "PHARMACY_ON_CALL") return "PHARMACY_ON_CALL";
+  if (x === "RESTAURANT") return "RESTAURANT";
   return "UNKNOWN";
 }
 
-/**
- * On valide l'intent audio seulement si :
- * - confidence >= minConf
- * - delta(top1 - top2) >= minDelta
- */
 function pickClearAudioIntent(
   resp: AudioIntentResp | null,
   opts?: { minConf?: number; minDelta?: number }
-): { intent: "PHARMACY" | "CLINIC" | "PHARMACY_ON_CALL" | "UNKNOWN"; conf: number } {
+): { intent: "PHARMACY" | "CLINIC" | "PHARMACY_ON_CALL" | "RESTAURANT" | "UNKNOWN"; conf: number } {
   const minConf = opts?.minConf ?? 0.62;
   const minDelta = opts?.minDelta ?? 0.08;
 
@@ -183,14 +173,13 @@ function pickClearAudioIntent(
 }
 
 export default function ResultsScreen({ navigation, route }: Props) {
-  const { district, queryText, nearLat, nearLng, intent } = route.params as any;
+  const { district, queryText, nearLat, nearLng, intent } = route.params;
 
-  // ✅ coords “vivantes”
   const [nearLatState, setNearLatState] = useState<number | null>(nearLat ?? null);
   const [nearLngState, setNearLngState] = useState<number | null>(nearLng ?? null);
   const hasCoords = nearLatState != null && nearLngState != null;
 
-  const [items, setItems] = useState<PharmacyItem[]>([]);
+  const [items, setItems] = useState<ResultItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -200,10 +189,12 @@ export default function ResultsScreen({ navigation, route }: Props) {
   const [webRec, setWebRec] = useState<MediaRecorder | null>(null);
 
   const mode = useMemo(() => {
-    return intent === "PHARMACY_ON_CALL" ? "oncall" : intent === "CLINIC" ? "clinic" : "all";
+    if (intent === "PHARMACY_ON_CALL") return "oncall";
+    if (intent === "CLINIC") return "clinic";
+    if (intent === "RESTAURANT") return "restaurant";
+    return "all";
   }, [intent]);
 
-  // ✅ pour éviter l'effet "trop radical"
   const failCountRef = useRef(0);
 
   useEffect(() => {
@@ -218,12 +209,17 @@ export default function ResultsScreen({ navigation, route }: Props) {
     })();
   }, []);
 
-  const loadData = async (d: string | null, lat?: number | null, lng?: number | null, m?: "oncall" | "clinic" | "all") => {
+  const loadData = async (
+    d: string | null,
+    lat?: number | null,
+    lng?: number | null,
+    m?: "oncall" | "clinic" | "all" | "restaurant"
+  ) => {
     setError(null);
     setLoading(true);
 
     const modeFinal = m ?? "all";
-    let res: PharmacyItem[] = [];
+    let res: ResultItem[] = [];
 
     try {
       if (modeFinal === "oncall") {
@@ -231,6 +227,8 @@ export default function ResultsScreen({ navigation, route }: Props) {
         if (res.length === 0) res = await searchPharmacies(d, lat ?? undefined, lng ?? undefined);
       } else if (modeFinal === "clinic") {
         res = await searchClinics(d, lat ?? undefined, lng ?? undefined);
+      } else if (modeFinal === "restaurant") {
+        res = await searchRestaurants(d, lat ?? undefined, lng ?? undefined);
       } else {
         res = await searchPharmacies(d, lat ?? undefined, lng ?? undefined);
       }
@@ -238,13 +236,11 @@ export default function ResultsScreen({ navigation, route }: Props) {
       setItems(res);
       setLoading(false);
 
-      // ✅ succès -> reset fail
       failCountRef.current = 0;
 
       if (res.length > 0) {
         await playUi("tap_item_to_listen");
       } else {
-        // pas de résultat -> audio guidance
         await playUi("fallback_pharmacies_or_retry");
       }
     } catch (e: any) {
@@ -253,22 +249,13 @@ export default function ResultsScreen({ navigation, route }: Props) {
     }
   };
 
-  // ✅ si inconnu sur Results:
-  // - on informe (audio + texte)
-  // - puis on retourne à l'accueil (après un petit délai)
   const handleUnknownQuery = async () => {
     failCountRef.current += 1;
-
-    setStatusText("Je n’ai pas compris. Dis : « pharmacie » ou « clinique ».");
-
-    // Audio guidance (mina)
+    setStatusText("Je n’ai pas compris. Dis : pharmacie, clinique, restaurant.");
     await playUi("fallback_pharmacies_or_retry");
-
-    await stopAllAudio();
     navigation.goBack();
   };
 
-  /** ✅ Load initial + tentative localisation */
   useEffect(() => {
     let mounted = true;
 
@@ -297,7 +284,6 @@ export default function ResultsScreen({ navigation, route }: Props) {
       Speech.stop();
       stopAllAudio().catch(() => {});
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [district, intent]);
 
   const callPhone = async (phone?: string) => {
@@ -307,38 +293,38 @@ export default function ResultsScreen({ navigation, route }: Props) {
     if (can) Linking.openURL(url);
   };
 
-  const openMaps = async (item: PharmacyItem) => {
-  try {
-    const labelParts = [item.name, item.address, item.district, item.city].filter(Boolean);
-    const label = labelParts.join(", ");
+  const openMaps = async (item: ResultItem) => {
+    try {
+      const labelParts = [item.name, item.address, item.district, item.city].filter(Boolean);
+      const label = labelParts.join(", ");
 
-    let url = "";
+      let url = "";
 
-    if (Platform.OS === "ios") {
-      if (label && item.lat != null && item.lng != null) {
-        url = `http://maps.apple.com/?q=${encodeURIComponent(item.name)}&ll=${item.lat},${item.lng}`;
-      } else if (label) {
-        url = `http://maps.apple.com/?q=${encodeURIComponent(label)}`;
-      } else if (item.lat != null && item.lng != null) {
-        url = `http://maps.apple.com/?ll=${item.lat},${item.lng}`;
+      if (Platform.OS === "ios") {
+        if (label && item.lat != null && item.lng != null) {
+          url = `http://maps.apple.com/?q=${encodeURIComponent(item.name)}&ll=${item.lat},${item.lng}`;
+        } else if (label) {
+          url = `http://maps.apple.com/?q=${encodeURIComponent(label)}`;
+        } else if (item.lat != null && item.lng != null) {
+          url = `http://maps.apple.com/?ll=${item.lat},${item.lng}`;
+        } else {
+          return;
+        }
       } else {
-        return;
+        if (label) {
+          url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(label)}`;
+        } else if (item.lat != null && item.lng != null) {
+          url = `https://www.google.com/maps/search/?api=1&query=${item.lat},${item.lng}`;
+        } else {
+          return;
+        }
       }
-    } else {
-      if (label) {
-        url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(label)}`;
-      } else if (item.lat != null && item.lng != null) {
-        url = `https://www.google.com/maps/search/?api=1&query=${item.lat},${item.lng}`;
-      } else {
-        return;
-      }
+
+      await Linking.openURL(url);
+    } catch (e) {
+      console.log("openMaps error:", e);
     }
-
-    await Linking.openURL(url);
-  } catch (e) {
-    console.log("openMaps error:", e);
-  }
-};
+  };
 
   const speakNameOnly = async (name: string) => {
     await stopAllAudio();
@@ -429,7 +415,6 @@ export default function ResultsScreen({ navigation, route }: Props) {
       return;
     }
 
-    // ✅ PRE-WARM
     setStatusText("Réveil serveur…");
     const okApi = await pingBackend();
     const okStt = await pingStt();
@@ -457,7 +442,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
     }
 
     setStatusText("Compréhension audio…");
-    let audioIntent: "PHARMACY" | "CLINIC" | "PHARMACY_ON_CALL" | "UNKNOWN" = "UNKNOWN";
+    let audioIntent: "PHARMACY" | "CLINIC" | "PHARMACY_ON_CALL" | "RESTAURANT" | "UNKNOWN" = "UNKNOWN";
     try {
       const resp = (await matchIntentFromAudio(uri)) as AudioIntentResp;
       audioIntent = pickClearAudioIntent(resp, { minConf: 0.62, minDelta: 0.08 }).intent;
@@ -472,6 +457,11 @@ export default function ResultsScreen({ navigation, route }: Props) {
       if (audioIntent === "CLINIC") {
         setStatusText("✅ Clinique");
         await loadData(district, lat, lng, "clinic");
+        return;
+      }
+      if (audioIntent === "RESTAURANT") {
+        setStatusText("✅ Restaurant");
+        await loadData(district, lat, lng, "restaurant");
         return;
       }
       if (audioIntent === "PHARMACY") {
@@ -496,7 +486,10 @@ export default function ResultsScreen({ navigation, route }: Props) {
 
     setStatusText(`Reconnu: ${text}`);
 
-    const { intent: newIntent, district: newDistrict } = routeQuery(text);
+    const routed = routeQuery(text);
+    const newIntent = routed.intent;
+    const newDistrict = routed.district;
+    const adminKey = routed.adminKey ?? null;
 
     if (newIntent === "PHARMACY_ON_CALL") {
       await loadData(newDistrict, lat, lng, "oncall");
@@ -510,6 +503,14 @@ export default function ResultsScreen({ navigation, route }: Props) {
       await loadData(newDistrict, lat, lng, "clinic");
       return;
     }
+    if (newIntent === "RESTAURANT") {
+      await loadData(newDistrict, lat, lng, "restaurant");
+      return;
+    }
+    if (newIntent === "ADMIN_GUIDE" && adminKey) {
+      navigation.navigate("Guide", { guideKey: adminKey, lang: "fr" });
+      return;
+    }
 
     await handleUnknownQuery();
   };
@@ -518,7 +519,6 @@ export default function ResultsScreen({ navigation, route }: Props) {
     try {
       await stopAllAudio();
 
-      // ✅ WEB
       if (Platform.OS === "web") {
         if (!webRec) {
           setStatusText("J'écoute...");
@@ -562,7 +562,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
               }
 
               setStatusText("Compréhension audio…");
-              let audioIntent: "PHARMACY" | "CLINIC" | "PHARMACY_ON_CALL" | "UNKNOWN" = "UNKNOWN";
+              let audioIntent: "PHARMACY" | "CLINIC" | "PHARMACY_ON_CALL" | "RESTAURANT" | "UNKNOWN" = "UNKNOWN";
               try {
                 const resp = (await matchIntentFromBlob(blob)) as AudioIntentResp;
                 audioIntent = pickClearAudioIntent(resp, { minConf: 0.62, minDelta: 0.08 }).intent;
@@ -577,6 +577,11 @@ export default function ResultsScreen({ navigation, route }: Props) {
                 if (audioIntent === "CLINIC") {
                   setStatusText("✅ Clinique");
                   await loadData(district, lat, lng, "clinic");
+                  return;
+                }
+                if (audioIntent === "RESTAURANT") {
+                  setStatusText("✅ Restaurant");
+                  await loadData(district, lat, lng, "restaurant");
                   return;
                 }
                 if (audioIntent === "PHARMACY") {
@@ -601,7 +606,10 @@ export default function ResultsScreen({ navigation, route }: Props) {
 
               setStatusText(`Reconnu: ${text}`);
 
-              const { intent: newIntent, district: newDistrict } = routeQuery(text);
+              const routed = routeQuery(text);
+              const newIntent = routed.intent;
+              const newDistrict = routed.district;
+              const adminKey = routed.adminKey ?? null;
 
               if (newIntent === "PHARMACY_ON_CALL") {
                 await loadData(newDistrict, lat, lng, "oncall");
@@ -613,6 +621,14 @@ export default function ResultsScreen({ navigation, route }: Props) {
               }
               if (newIntent === "CLINIC") {
                 await loadData(newDistrict, lat, lng, "clinic");
+                return;
+              }
+              if (newIntent === "RESTAURANT") {
+                await loadData(newDistrict, lat, lng, "restaurant");
+                return;
+              }
+              if (newIntent === "ADMIN_GUIDE" && adminKey) {
+                navigation.navigate("Guide", { guideKey: adminKey, lang: "fr" });
                 return;
               }
 
@@ -637,7 +653,6 @@ export default function ResultsScreen({ navigation, route }: Props) {
         }
       }
 
-      // ✅ MOBILE
       if (recording) {
         await stopRecordingAndSearch(recording);
       } else {
@@ -666,6 +681,15 @@ export default function ResultsScreen({ navigation, route }: Props) {
     }
   };
 
+  const pageTitle =
+    intent === "CLINIC"
+      ? "Cliniques"
+      : intent === "PHARMACY_ON_CALL"
+      ? "Pharmacies de garde"
+      : intent === "RESTAURANT"
+      ? "Restaurants"
+      : "Pharmacies";
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -680,25 +704,22 @@ export default function ResultsScreen({ navigation, route }: Props) {
         </Pressable>
 
         <View style={{ flex: 1 }}>
-          <Text style={styles.title}>
-            {intent === "CLINIC" ? "Cliniques" : intent === "PHARMACY_ON_CALL" ? "Pharmacies de garde" : "Pharmacies"}
-          </Text>
+          <Text style={styles.title}>{pageTitle}</Text>
 
           <Text style={styles.subtitle}>
-            {hasCoords ? "Triées par distance (près de vous)" : district ? `Quartier: ${district}` : "Sans localisation"}
+            {hasCoords ? "Triés par distance (près de vous)" : district ? `Quartier: ${district}` : "Sans localisation"}
           </Text>
 
           <Text style={styles.query}>Requête: {queryText}</Text>
         </View>
 
-        {/* ✅ CHANGEMENT: micro mini = reset vers Home + autoStartMic */}
         <Pressable
           onPress={async () => {
             await stopAllAudio();
 
             navigation.reset({
               index: 0,
-              routes: [{ name: "Home" as any, params: { autoStartMic: true } as any }],
+              routes: [{ name: "Home", params: { autoStartMic: true } }],
             });
           }}
           style={styles.micMini}
@@ -740,14 +761,14 @@ export default function ResultsScreen({ navigation, route }: Props) {
                   <Text style={styles.cardTitle}>{item.name}</Text>
 
                   <Pressable
-  onPress={async () => {
-    await stopAllAudio();
-    await openMaps(item);
-  }}
-  style={styles.mapBtn}
->
-  <Text style={styles.mapBtnText}>🧭 Itinéraire</Text>
-</Pressable>
+                    onPress={async () => {
+                      await stopAllAudio();
+                      await openMaps(item);
+                    }}
+                    style={styles.mapBtn}
+                  >
+                    <Text style={styles.mapBtnText}>🧭 Itinéraire</Text>
+                  </Pressable>
                 </View>
 
                 <Text style={styles.cardText}>
@@ -860,21 +881,21 @@ const styles = StyleSheet.create({
     paddingRight: 8,
   },
   mapBtn: {
-  minWidth: 110,
-  height: 40,
-  paddingHorizontal: 12,
-  borderRadius: 12,
-  backgroundColor: "#111",
-  borderWidth: 1,
-  borderColor: "#333",
-  alignItems: "center",
-  justifyContent: "center",
-},
-mapBtnText: {
-  fontSize: 14,
-  fontWeight: "700",
-  color: "#fff",
-},
+    minWidth: 110,
+    height: 40,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: "#111",
+    borderWidth: 1,
+    borderColor: "#333",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  mapBtnText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#fff",
+  },
 
   cardText: { color: "#bbb", marginTop: 6 },
   cardSub: { color: "#888", marginTop: 6, fontSize: 13 },

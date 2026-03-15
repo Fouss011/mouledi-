@@ -1,6 +1,16 @@
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 import { API_BASE_URL, STT_BASE_URL } from "../config";
+import { findNearestManualOnCallPharmacies } from "../data/manualOnCallPharmacies";
+
+export type SearchIntent =
+  | "PHARMACY"
+  | "CLINIC"
+  | "PHARMACY_ON_CALL"
+  | "RESTAURANT"
+  | "ADMIN_GUIDE"
+  | "UNKNOWN"
+  | string;
 
 export type PharmacyItem = {
   provider_id?: string;
@@ -16,8 +26,23 @@ export type PharmacyItem = {
   distance_km?: number | null;
 };
 
+export type RestaurantItem = {
+  provider_id?: string;
+  type?: string;
+  name: string;
+  phone?: string;
+  address?: string;
+  district?: string;
+  city?: string;
+  lat?: number;
+  lng?: number;
+  distance_km?: number | null;
+};
+
+export type ResultItem = PharmacyItem | RestaurantItem;
+
 export type IntentMatchResp = {
-  intent: "PHARMACY" | "CLINIC" | "PHARMACY_ON_CALL" | "UNKNOWN" | string;
+  intent: SearchIntent;
   confidence: number;
   scores?: { intent: string; score: number; n?: number }[];
 };
@@ -38,8 +63,8 @@ function getDevHostIp(): string | null {
 
 const DEV_HOST = getDevHostIp();
 
-// ✅ Toggle : si true -> on force les URLs déployées même en Expo Go
-const USE_REMOTE_SERVICES = true; // ✅ force Fly sur mobile
+// si true -> on force les URLs déployées même en Expo Go
+const USE_REMOTE_SERVICES = true;
 
 const DEV_BASE_URL = DEV_HOST ? `http://${DEV_HOST}:8000` : "http://127.0.0.1:8000";
 const DEV_STT_URL = DEV_HOST ? `http://${DEV_HOST}:8001` : "http://127.0.0.1:8001";
@@ -116,10 +141,10 @@ export async function pingStt(): Promise<boolean> {
 }
 
 // ----------------------
-// Providers API
+// Providers / Places API
 // ----------------------
 function buildProvidersUrl(opts: {
-  type: "pharmacy" | "clinic";
+  type: "pharmacy" | "clinic" | "restaurant";
   district?: string | null;
   onCallNow?: boolean;
   limit?: number;
@@ -135,7 +160,6 @@ function buildProvidersUrl(opts: {
   if (opts.onCallNow) params.set("on_call_now", "true");
   if (opts.district) params.set("district", opts.district);
 
-  // ✅ IMPORTANT: on n’envoie source/max_km QUE si on a une position.
   if (opts.nearLat != null && opts.nearLng != null) {
     params.set("near_lat", String(opts.nearLat));
     params.set("near_lng", String(opts.nearLng));
@@ -146,7 +170,7 @@ function buildProvidersUrl(opts: {
   return `${BASE_URL}/health/providers?${params.toString()}`;
 }
 
-async function fetchProviders(url: string): Promise<PharmacyItem[]> {
+async function fetchProviders(url: string): Promise<ResultItem[]> {
   const r = await retryFetch(url, { method: "GET" }, { retries: 3, timeoutMs: 25000 });
   if (!r.ok) {
     const txt = await r.text().catch(() => "");
@@ -156,11 +180,25 @@ async function fetchProviders(url: string): Promise<PharmacyItem[]> {
   return Array.isArray(data?.items) ? data.items : [];
 }
 
+// ----------------------
+// Manual on-call pharmacies (local fallback first)
+// ----------------------
 export async function searchPharmaciesOnCall(
   district: string | null,
   nearLat?: number,
   nearLng?: number
 ): Promise<PharmacyItem[]> {
+  const localManual = findNearestManualOnCallPharmacies({
+    district,
+    nearLat,
+    nearLng,
+    limit: 50,
+  });
+
+  if (localManual.length > 0) {
+    return localManual;
+  }
+
   const url = buildProvidersUrl({
     type: "pharmacy",
     district,
@@ -170,7 +208,21 @@ export async function searchPharmaciesOnCall(
     nearLng,
     maxKm: 7,
   });
-  return fetchProviders(url);
+
+  const remote = (await fetchProviders(url)) as PharmacyItem[];
+  if (remote.length > 0) return remote;
+
+  const fallbackUrl = buildProvidersUrl({
+    type: "pharmacy",
+    district,
+    onCallNow: false,
+    limit: 50,
+    nearLat,
+    nearLng,
+    maxKm: 7,
+  });
+
+  return (await fetchProviders(fallbackUrl)) as PharmacyItem[];
 }
 
 export async function searchPharmacies(
@@ -187,7 +239,7 @@ export async function searchPharmacies(
     nearLng,
     maxKm: 5,
   });
-  return fetchProviders(url);
+  return (await fetchProviders(url)) as PharmacyItem[];
 }
 
 export async function searchClinics(
@@ -204,11 +256,28 @@ export async function searchClinics(
     nearLng,
     maxKm: 5,
   });
-  return fetchProviders(url);
+  return (await fetchProviders(url)) as PharmacyItem[];
+}
+
+export async function searchRestaurants(
+  district: string | null,
+  nearLat?: number,
+  nearLng?: number
+): Promise<RestaurantItem[]> {
+  const url = buildProvidersUrl({
+    type: "restaurant",
+    district,
+    onCallNow: false,
+    limit: 50,
+    nearLat,
+    nearLng,
+    maxKm: 7,
+  });
+  return (await fetchProviders(url)) as RestaurantItem[];
 }
 
 // -----------------
-// ✅ INTENT AUDIO MATCHING
+// Intent audio matching
 // -----------------
 export async function matchIntentFromAudio(audioUri: string, minConf = 0.0): Promise<IntentMatchResp> {
   const form = new FormData();

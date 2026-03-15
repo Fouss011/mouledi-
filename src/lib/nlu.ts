@@ -1,45 +1,159 @@
-import { matchDistrict } from "./matchDistrict";
+export type RoutedIntent =
+  | "PHARMACY"
+  | "CLINIC"
+  | "PHARMACY_ON_CALL"
+  | "RESTAURANT"
+  | "ADMIN_GUIDE"
+  | "UNKNOWN";
 
-export type Intent = "PHARMACY_ON_CALL" | "PHARMACY" | "CLINIC" | "UNKNOWN";
+export type AdminGuideKey = "passport" | "cni" | "casier" | null;
 
-export function normalizeText(input: string): string {
-  return input
-    .trim()
+export type RouteQueryResult = {
+  intent: RoutedIntent;
+  district: string | null;
+  adminKey?: AdminGuideKey;
+};
+
+const DISTRICT_ALIASES: Record<string, string> = {
+  be: "bè",
+  "bè": "bè",
+  agoe: "agoè",
+  "agoè": "agoè",
+  agwe: "agoè",
+  tokoin: "tokoin",
+  adidogome: "adidogomé",
+  "adidogomé": "adidogomé",
+  nyekonakpoe: "nyekonakpoè",
+  "nyekonakpoè": "nyekonakpoè",
+  hanoukope: "hanoukopé",
+  "hanoukopé": "hanoukopé",
+  akodessewa: "akodesséwa",
+  "akodesséwa": "akodesséwa",
+  kodjoviakope: "kodjoviakopé",
+  "kodjoviakopé": "kodjoviakopé",
+  dekon: "dékon",
+  "dékon": "dékon",
+  legbassito: "agoè",
+  begu: "bè",
+};
+
+function normalizeText(s: string): string {
+  return (s || "")
     .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/['’]/g, " ")
+    .replace(/[^a-z0-9\s-]/g, " ")
     .replace(/\s+/g, " ")
-    .replace(/[’']/g, "'");
+    .trim();
 }
 
-export function detectIntent(text: string): Intent {
+function extractDistrict(text: string): string | null {
   const t = normalizeText(text);
 
-  const hasPharmacy = t.includes("pharmacie") || t.includes("pharmacies");
-  const hasClinic =
+  for (const [alias, canonical] of Object.entries(DISTRICT_ALIASES)) {
+    if (t.includes(alias)) return canonical;
+  }
+
+  return null;
+}
+
+function looksLikeAdminGuide(text: string): AdminGuideKey {
+  const t = normalizeText(text);
+
+  if (
+    t.includes("passeport") ||
+    t.includes("passport")
+  ) {
+    return "passport";
+  }
+
+  if (
+    t.includes("carte identite") ||
+    t.includes("cni") ||
+    t.includes("piece identite") ||
+    t.includes("carte nationale")
+  ) {
+    return "cni";
+  }
+
+  if (
+    t.includes("casier") ||
+    t.includes("casier judiciaire")
+  ) {
+    return "casier";
+  }
+
+  return null;
+}
+
+export function routeQuery(input: string): RouteQueryResult {
+  const t = normalizeText(input);
+  const district = extractDistrict(input);
+
+  const adminKey = looksLikeAdminGuide(t);
+  const mentionsDemarche =
+    t.includes("demarche") ||
+    t.includes("document") ||
+    t.includes("papier") ||
+    t.includes("administratif") ||
+    t.includes("administrative") ||
+    adminKey !== null;
+
+  if (mentionsDemarche && adminKey) {
+    return { intent: "ADMIN_GUIDE", district, adminKey };
+  }
+
+  const mentionsOnCall =
+    t.includes("garde") ||
     t.includes("urgence") ||
-    t.includes("fievre") || t.includes("fièvre") ||
-    t.includes("mal au ventre") ||
-    t.includes("medecin") || t.includes("médecin") ||
-    t.includes("hopital") || t.includes("hôpital") ||
+    t.includes("ouverte nuit") ||
+    t.includes("ouverte la nuit");
+
+  const mentionsPharmacy =
+    t.includes("pharmacie") ||
+    t.includes("pharmacy") ||
+    t.includes("medicament") ||
+    t.includes("medicaments") ||
+    t.includes("medecine");
+
+  const mentionsClinic =
     t.includes("clinique") ||
-    t.includes("centre de sante") || t.includes("centre de santé");
+    t.includes("hopital") ||
+    t.includes("hospital") ||
+    t.includes("centre de sante") ||
+    t.includes("sante") ||
+    t.includes("medecin");
 
-  const hasOnCall =
-    t.includes("garde") || t.includes("de garde") || t.includes("garda") || t.includes("on call");
+  const mentionsRestaurant =
+    t.includes("restaurant") ||
+    t.includes("manger") ||
+    t.includes("ou manger") ||
+    t.includes("fast food") ||
+    t.includes("cafe") ||
+    t.includes("bar") ||
+    t.includes("maquis") ||
+    t.includes("grillade");
 
-  if (hasPharmacy && hasOnCall) return "PHARMACY_ON_CALL";
-  if (hasPharmacy) return "PHARMACY";
+  if (mentionsOnCall && mentionsPharmacy) {
+    return { intent: "PHARMACY_ON_CALL", district, adminKey: null };
+  }
 
-  if (hasClinic) return "CLINIC";
+  if (mentionsOnCall) {
+    return { intent: "PHARMACY_ON_CALL", district, adminKey: null };
+  }
 
-  return "UNKNOWN";
-}
+  if (mentionsRestaurant) {
+    return { intent: "RESTAURANT", district, adminKey: null };
+  }
 
-export function extractDistrict(text: string): string | null {
-  return matchDistrict(text);
-}
+  if (mentionsPharmacy) {
+    return { intent: "PHARMACY", district, adminKey: null };
+  }
 
-export function routeQuery(text: string): { intent: Intent; district: string | null } {
-  const intent = detectIntent(text);
-  const district = extractDistrict(text);
-  return { intent, district };
+  if (mentionsClinic) {
+    return { intent: "CLINIC", district, adminKey: null };
+  }
+
+  return { intent: "UNKNOWN", district, adminKey: null };
 }
