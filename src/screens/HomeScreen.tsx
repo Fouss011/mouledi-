@@ -172,7 +172,14 @@ export default function HomeScreen({ navigation, route }: Props) {
   const [showFallback, setShowFallback] = useState<boolean>(false);
   const [webRec, setWebRec] = useState<MediaRecorder | null>(null);
   const [selectedLang, setSelectedLang] = useState<UserLang>("mina");
-  const [showLangPicker, setShowLangPicker] = useState<boolean>(true);
+  const [showLangPicker, setShowLangPicker] = useState<boolean>(
+  !(route.params?.skipLanguagePicker ?? false)
+  );
+  useEffect(() => {
+    if (route.params?.skipLanguagePicker) {
+      setShowLangPicker(false);
+    }
+  }, [route.params?.skipLanguagePicker]);
   const [titleTapCount, setTitleTapCount] = useState<number>(0);
   const [showHiddenAccess, setShowHiddenAccess] = useState<boolean>(false);
 

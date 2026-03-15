@@ -716,10 +716,17 @@ export default function ResultsScreen({ navigation, route }: Props) {
         <Pressable
           onPress={async () => {
             await stopAllAudio();
-
             navigation.reset({
               index: 0,
-              routes: [{ name: "Home", params: { autoStartMic: true } }],
+              routes: [
+                {
+                  name: "Home",
+                  params: {
+                    autoStartMic: true,
+                    skipLanguagePicker: true,
+                  } as any,
+                },
+              ],
             });
           }}
           style={styles.micMini}

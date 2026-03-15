@@ -12,7 +12,7 @@ import AdminReviewScreen from "./src/screens/AdminReviewScreen";
 import GuideScreen from "./src/screens/GuideScreen";
 
 export type RootStackParamList = {
-  Home: { autoStartMic?: boolean } | undefined;
+  Home: { autoStartMic?: boolean; skipLanguagePicker?: boolean } | undefined;
   Results: {
     queryText: string;
     intent: "PHARMACY_ON_CALL" | "PHARMACY" | "CLINIC" | "RESTAURANT";
