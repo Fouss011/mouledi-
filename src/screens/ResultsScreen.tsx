@@ -20,9 +20,17 @@ import {
   matchIntentFromAudio,
   matchIntentFromBlob,
 } from "../lib/api";
-import { routeQuery } from "../lib/nlu";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Results">;
+
+type AudioIntent =
+  | "PHARMACY"
+  | "CLINIC"
+  | "PHARMACY_ON_CALL"
+  | "RESTAURANT"
+  | "PASSPORT"
+  | "CNI"
+  | "UNKNOWN";
 
 let currentSound: Audio.Sound | null = null;
 let playSeq = 0;
@@ -139,19 +147,21 @@ type AudioIntentResp = {
   scores?: Array<{ intent: string; score: number; n?: number }>;
 };
 
-function normalizeIntent(i: string): "PHARMACY" | "CLINIC" | "PHARMACY_ON_CALL" | "RESTAURANT" | "UNKNOWN" {
+function normalizeIntent(i: string): AudioIntent {
   const x = (i || "").toUpperCase().trim();
   if (x === "PHARMACY") return "PHARMACY";
   if (x === "CLINIC") return "CLINIC";
   if (x === "PHARMACY_ON_CALL") return "PHARMACY_ON_CALL";
   if (x === "RESTAURANT") return "RESTAURANT";
+  if (x === "PASSPORT") return "PASSPORT";
+  if (x === "CNI") return "CNI";
   return "UNKNOWN";
 }
 
 function pickClearAudioIntent(
   resp: AudioIntentResp | null,
   opts?: { minConf?: number; minDelta?: number }
-): { intent: "PHARMACY" | "CLINIC" | "PHARMACY_ON_CALL" | "RESTAURANT" | "UNKNOWN"; conf: number } {
+): { intent: AudioIntent; conf: number } {
   const minConf = opts?.minConf ?? 0.62;
   const minDelta = opts?.minDelta ?? 0.08;
 
@@ -170,6 +180,52 @@ function pickClearAudioIntent(
 
   const isClear = conf >= minConf && delta >= minDelta && bestIntent !== "UNKNOWN";
   return { intent: isClear ? normalizeIntent(bestIntent) : "UNKNOWN", conf };
+}
+
+function guessIntentFromText(text: string): AudioIntent {
+  const t = (text || "").toLowerCase();
+
+  const looksPassport =
+    t.includes("passeport") ||
+    t.includes("passport");
+
+  const looksCni =
+    t.includes("carte d'identité") ||
+    t.includes("carte identité") ||
+    t.includes("carte d identite") ||
+    t.includes("cni") ||
+    t.includes("identité") ||
+    t.includes("identite");
+
+  const looksOnCall = t.includes("garde") || t.includes("urgence");
+
+  const looksClinic =
+    t.includes("clini") ||
+    t.includes("hop") ||
+    t.includes("hôp") ||
+    t.includes("centre de santé") ||
+    t.includes("santé");
+
+  const looksRestaurant =
+    t.includes("restaurant") ||
+    t.includes("manger") ||
+    t.includes("maquis") ||
+    t.includes("grillade") ||
+    t.includes("fast food") ||
+    t.includes("cafe");
+
+  const looksPharmacy =
+    t.includes("pharm") ||
+    t.includes("médic") ||
+    t.includes("medic");
+
+  if (looksPassport) return "PASSPORT";
+  if (looksCni) return "CNI";
+  if (looksOnCall) return "PHARMACY_ON_CALL";
+  if (looksClinic) return "CLINIC";
+  if (looksRestaurant) return "RESTAURANT";
+  if (looksPharmacy) return "PHARMACY";
+  return "UNKNOWN";
 }
 
 export default function ResultsScreen({ navigation, route }: Props) {
@@ -372,7 +428,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
     setStatusText("J'écoute...");
   };
 
-  const tryHandleVoiceCommand = (text: string) => {
+  const tryHandleVoiceCommand = async (text: string) => {
     const t = (text || "").toLowerCase();
 
     if (t.includes("retour") || t.includes("accueil") || t.includes("home")) {
@@ -387,6 +443,46 @@ export default function ResultsScreen({ navigation, route }: Props) {
         const target = items[idx];
         if (target?.phone) callPhone(target.phone);
       }
+      return true;
+    }
+
+    return false;
+  };
+
+  const handleResolvedIntent = async (
+    resolvedIntent: AudioIntent,
+    lat: number | null,
+    lng: number | null,
+    textForQuery = ""
+  ) => {
+    if (resolvedIntent === "PHARMACY_ON_CALL") {
+      setStatusText("✅ Pharmacie de garde");
+      await loadData(district, lat, lng, "oncall");
+      return true;
+    }
+    if (resolvedIntent === "CLINIC") {
+      setStatusText("✅ Clinique");
+      await loadData(district, lat, lng, "clinic");
+      return true;
+    }
+    if (resolvedIntent === "RESTAURANT") {
+      setStatusText("✅ Restaurant");
+      await loadData(district, lat, lng, "restaurant");
+      return true;
+    }
+    if (resolvedIntent === "PASSPORT") {
+      setStatusText("✅ Passeport");
+      navigation.navigate("Guide", { guideKey: "passport", lang: "fr" });
+      return true;
+    }
+    if (resolvedIntent === "CNI") {
+      setStatusText("✅ Carte d’identité");
+      navigation.navigate("Guide", { guideKey: "cni", lang: "fr" });
+      return true;
+    }
+    if (resolvedIntent === "PHARMACY") {
+      setStatusText("✅ Pharmacie");
+      await loadData(district, lat, lng, "all");
       return true;
     }
 
@@ -442,39 +538,21 @@ export default function ResultsScreen({ navigation, route }: Props) {
     }
 
     setStatusText("Compréhension audio…");
-    let audioIntent: "PHARMACY" | "CLINIC" | "PHARMACY_ON_CALL" | "RESTAURANT" | "UNKNOWN" = "UNKNOWN";
+    let audioIntent: AudioIntent = "UNKNOWN";
     try {
       const resp = (await matchIntentFromAudio(uri)) as AudioIntentResp;
       audioIntent = pickClearAudioIntent(resp, { minConf: 0.62, minDelta: 0.08 }).intent;
     } catch {}
 
     if (audioIntent !== "UNKNOWN") {
-      if (audioIntent === "PHARMACY_ON_CALL") {
-        setStatusText("✅ Pharmacie de garde");
-        await loadData(district, lat, lng, "oncall");
-        return;
-      }
-      if (audioIntent === "CLINIC") {
-        setStatusText("✅ Clinique");
-        await loadData(district, lat, lng, "clinic");
-        return;
-      }
-      if (audioIntent === "RESTAURANT") {
-        setStatusText("✅ Restaurant");
-        await loadData(district, lat, lng, "restaurant");
-        return;
-      }
-      if (audioIntent === "PHARMACY") {
-        setStatusText("✅ Pharmacie");
-        await loadData(district, lat, lng, "all");
-        return;
-      }
+      const handled = await handleResolvedIntent(audioIntent, lat, lng);
+      if (handled) return;
     }
 
     setStatusText("Reconnaissance STT…");
     const { text } = await sttFromAudio(uri);
 
-    if (tryHandleVoiceCommand(text)) {
+    if (await tryHandleVoiceCommand(text)) {
       setStatusText(`Commande: ${text}`);
       return;
     }
@@ -486,31 +564,9 @@ export default function ResultsScreen({ navigation, route }: Props) {
 
     setStatusText(`Reconnu: ${text}`);
 
-    const routed = routeQuery(text);
-    const newIntent = routed.intent;
-    const newDistrict = routed.district;
-    const adminKey = routed.adminKey ?? null;
-
-    if (newIntent === "PHARMACY_ON_CALL") {
-      await loadData(newDistrict, lat, lng, "oncall");
-      return;
-    }
-    if (newIntent === "PHARMACY") {
-      await loadData(newDistrict, lat, lng, "all");
-      return;
-    }
-    if (newIntent === "CLINIC") {
-      await loadData(newDistrict, lat, lng, "clinic");
-      return;
-    }
-    if (newIntent === "RESTAURANT") {
-      await loadData(newDistrict, lat, lng, "restaurant");
-      return;
-    }
-    if (newIntent === "ADMIN_GUIDE" && adminKey) {
-      navigation.navigate("Guide", { guideKey: adminKey, lang: "fr" });
-      return;
-    }
+    const guessed = guessIntentFromText(text);
+    const handled = await handleResolvedIntent(guessed, lat, lng, text);
+    if (handled) return;
 
     await handleUnknownQuery();
   };
@@ -562,39 +618,21 @@ export default function ResultsScreen({ navigation, route }: Props) {
               }
 
               setStatusText("Compréhension audio…");
-              let audioIntent: "PHARMACY" | "CLINIC" | "PHARMACY_ON_CALL" | "RESTAURANT" | "UNKNOWN" = "UNKNOWN";
+              let audioIntent: AudioIntent = "UNKNOWN";
               try {
                 const resp = (await matchIntentFromBlob(blob)) as AudioIntentResp;
                 audioIntent = pickClearAudioIntent(resp, { minConf: 0.62, minDelta: 0.08 }).intent;
               } catch {}
 
               if (audioIntent !== "UNKNOWN") {
-                if (audioIntent === "PHARMACY_ON_CALL") {
-                  setStatusText("✅ Pharmacie de garde");
-                  await loadData(district, lat, lng, "oncall");
-                  return;
-                }
-                if (audioIntent === "CLINIC") {
-                  setStatusText("✅ Clinique");
-                  await loadData(district, lat, lng, "clinic");
-                  return;
-                }
-                if (audioIntent === "RESTAURANT") {
-                  setStatusText("✅ Restaurant");
-                  await loadData(district, lat, lng, "restaurant");
-                  return;
-                }
-                if (audioIntent === "PHARMACY") {
-                  setStatusText("✅ Pharmacie");
-                  await loadData(district, lat, lng, "all");
-                  return;
-                }
+                const handled = await handleResolvedIntent(audioIntent, lat, lng);
+                if (handled) return;
               }
 
               setStatusText("Reconnaissance STT…");
               const { text } = await sttFromBlob(blob);
 
-              if (tryHandleVoiceCommand(text)) {
+              if (await tryHandleVoiceCommand(text)) {
                 setStatusText(`Commande: ${text}`);
                 return;
               }
@@ -606,31 +644,9 @@ export default function ResultsScreen({ navigation, route }: Props) {
 
               setStatusText(`Reconnu: ${text}`);
 
-              const routed = routeQuery(text);
-              const newIntent = routed.intent;
-              const newDistrict = routed.district;
-              const adminKey = routed.adminKey ?? null;
-
-              if (newIntent === "PHARMACY_ON_CALL") {
-                await loadData(newDistrict, lat, lng, "oncall");
-                return;
-              }
-              if (newIntent === "PHARMACY") {
-                await loadData(newDistrict, lat, lng, "all");
-                return;
-              }
-              if (newIntent === "CLINIC") {
-                await loadData(newDistrict, lat, lng, "clinic");
-                return;
-              }
-              if (newIntent === "RESTAURANT") {
-                await loadData(newDistrict, lat, lng, "restaurant");
-                return;
-              }
-              if (newIntent === "ADMIN_GUIDE" && adminKey) {
-                navigation.navigate("Guide", { guideKey: adminKey, lang: "fr" });
-                return;
-              }
+              const guessed = guessIntentFromText(text);
+              const handled = await handleResolvedIntent(guessed, lat, lng, text);
+              if (handled) return;
 
               await handleUnknownQuery();
             } catch (e: any) {

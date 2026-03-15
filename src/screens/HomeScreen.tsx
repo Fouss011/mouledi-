@@ -5,7 +5,6 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import * as Location from "expo-location";
 
 import { RootStackParamList } from "../../App";
-import { routeQuery } from "../lib/nlu";
 import {
   pingBackend,
   pingStt,
@@ -19,6 +18,14 @@ import {
 type Props = NativeStackScreenProps<RootStackParamList, "Home">;
 
 type UserLang = "mina" | "kabyè" | "fr" | "mute";
+type DirectIntent =
+  | "PHARMACY"
+  | "CLINIC"
+  | "PHARMACY_ON_CALL"
+  | "RESTAURANT"
+  | "PASSPORT"
+  | "CNI"
+  | "UNKNOWN";
 
 let currentSound: Audio.Sound | null = null;
 let playSeq = 0;
@@ -142,12 +149,23 @@ async function getNearCoordsSafe(
   }
 }
 
+function normalizeIntent(i?: string): DirectIntent {
+  const x = (i || "").toUpperCase().trim();
+  if (x === "PHARMACY") return "PHARMACY";
+  if (x === "CLINIC") return "CLINIC";
+  if (x === "PHARMACY_ON_CALL") return "PHARMACY_ON_CALL";
+  if (x === "RESTAURANT") return "RESTAURANT";
+  if (x === "PASSPORT") return "PASSPORT";
+  if (x === "CNI") return "CNI";
+  return "UNKNOWN";
+}
+
 function pickClearAudioIntent(
   resp: { intent?: string; confidence?: number; scores?: { intent: string; score: number }[] } | null | undefined,
   deltaMin = 0.18,
   minConfFallback = 0.35
-): { intent: string; confidence: number; isClear: boolean; delta?: number } {
-  const intent = resp?.intent ?? "UNKNOWN";
+): { intent: DirectIntent; confidence: number; isClear: boolean; delta?: number } {
+  const intent = normalizeIntent(resp?.intent);
   const confidence = Number(resp?.confidence ?? 0);
   const scores = resp?.scores;
 
@@ -164,6 +182,52 @@ function pickClearAudioIntent(
   return { intent, confidence, isClear, delta };
 }
 
+function guessIntentFromText(text: string): DirectIntent {
+  const t = (text || "").toLowerCase();
+
+  const looksPassport =
+    t.includes("passeport") ||
+    t.includes("passport");
+
+  const looksCni =
+    t.includes("carte d'identité") ||
+    t.includes("carte identité") ||
+    t.includes("carte d identite") ||
+    t.includes("cni") ||
+    t.includes("identité") ||
+    t.includes("identite");
+
+  const looksOnCall = t.includes("garde") || t.includes("urgence");
+
+  const looksClinic =
+    t.includes("clini") ||
+    t.includes("hop") ||
+    t.includes("hôp") ||
+    t.includes("centre de santé") ||
+    t.includes("santé");
+
+  const looksRestaurant =
+    t.includes("restaurant") ||
+    t.includes("manger") ||
+    t.includes("maquis") ||
+    t.includes("grillade") ||
+    t.includes("fast food") ||
+    t.includes("cafe");
+
+  const looksPharmacy =
+    t.includes("pharm") ||
+    t.includes("médic") ||
+    t.includes("medic");
+
+  if (looksPassport) return "PASSPORT";
+  if (looksCni) return "CNI";
+  if (looksOnCall) return "PHARMACY_ON_CALL";
+  if (looksClinic) return "CLINIC";
+  if (looksRestaurant) return "RESTAURANT";
+  if (looksPharmacy) return "PHARMACY";
+  return "UNKNOWN";
+}
+
 export default function HomeScreen({ navigation, route }: Props) {
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [statusText, setStatusText] = useState<string>("");
@@ -173,14 +237,9 @@ export default function HomeScreen({ navigation, route }: Props) {
   const [webRec, setWebRec] = useState<MediaRecorder | null>(null);
   const [selectedLang, setSelectedLang] = useState<UserLang>("mina");
   const [showLangPicker, setShowLangPicker] = useState<boolean>(
-  !(route.params?.skipLanguagePicker ?? false)
+    !(route.params?.skipLanguagePicker ?? false)
   );
   const [hasPlayedWelcome, setHasPlayedWelcome] = useState<boolean>(false);
-  useEffect(() => {
-    if (route.params?.skipLanguagePicker) {
-      setShowLangPicker(false);
-    }
-  }, [route.params?.skipLanguagePicker]);
   const [titleTapCount, setTitleTapCount] = useState<number>(0);
   const [showHiddenAccess, setShowHiddenAccess] = useState<boolean>(false);
 
@@ -192,6 +251,12 @@ export default function HomeScreen({ navigation, route }: Props) {
     if (now - lastCoachRef.current < 45_000) return;
     lastCoachRef.current = now;
   };
+
+  useEffect(() => {
+    if (route.params?.skipLanguagePicker) {
+      setShowLangPicker(false);
+    }
+  }, [route.params?.skipLanguagePicker]);
 
   useEffect(() => {
     setPlaybackMode().catch(() => {});
@@ -289,19 +354,17 @@ export default function HomeScreen({ navigation, route }: Props) {
   };
 
   const navigateByIntent = async (
-    finalIntent: string,
+    finalIntent: DirectIntent,
     text: string,
-    district: string | null,
     nearLat: number | null,
-    nearLng: number | null,
-    adminKey?: "passport" | "cni" | "casier" | null
+    nearLng: number | null
   ) => {
     if (finalIntent === "PHARMACY_ON_CALL") {
       await stopAllAudio();
       navigation.navigate("Results", {
         queryText: text || "pharmacie de garde",
         intent: "PHARMACY_ON_CALL",
-        district,
+        district: null,
         nearLat,
         nearLng,
       });
@@ -313,7 +376,7 @@ export default function HomeScreen({ navigation, route }: Props) {
       navigation.navigate("Results", {
         queryText: text || "pharmacie",
         intent: "PHARMACY",
-        district,
+        district: null,
         nearLat,
         nearLng,
       });
@@ -325,7 +388,7 @@ export default function HomeScreen({ navigation, route }: Props) {
       navigation.navigate("Results", {
         queryText: text || "clinique",
         intent: "CLINIC",
-        district,
+        district: null,
         nearLat,
         nearLng,
       });
@@ -337,17 +400,26 @@ export default function HomeScreen({ navigation, route }: Props) {
       navigation.navigate("Results", {
         queryText: text || "restaurant",
         intent: "RESTAURANT",
-        district,
+        district: null,
         nearLat,
         nearLng,
       });
       return true;
     }
 
-    if (finalIntent === "ADMIN_GUIDE" && adminKey) {
+    if (finalIntent === "PASSPORT") {
       await stopAllAudio();
       navigation.navigate("Guide", {
-        guideKey: adminKey,
+        guideKey: "passport",
+        lang: selectedLang === "mute" ? "fr" : selectedLang,
+      });
+      return true;
+    }
+
+    if (finalIntent === "CNI") {
+      await stopAllAudio();
+      navigation.navigate("Guide", {
+        guideKey: "cni",
         lang: selectedLang === "mute" ? "fr" : selectedLang,
       });
       return true;
@@ -439,7 +511,6 @@ export default function HomeScreen({ navigation, route }: Props) {
     } catch {}
 
     const picked = pickClearAudioIntent(audioResp, 0.18, 0.35);
-    const audioIntent = picked.intent;
 
     let text = "";
     if (!picked.isClear) {
@@ -454,58 +525,25 @@ export default function HomeScreen({ navigation, route }: Props) {
 
     const t = (text || "").toLowerCase();
     const hasWake = t.includes("moul");
-    const looksPharmacy = t.includes("pharm") || t.includes("médic") || t.includes("medic");
-    const looksClinic =
-      t.includes("clini") ||
-      t.includes("hop") ||
-      t.includes("hôp") ||
-      t.includes("centre de santé") ||
-      t.includes("santé");
-    const looksOnCall = t.includes("garde") || t.includes("urgence");
-    const looksRestaurant =
-      t.includes("restaurant") ||
-      t.includes("manger") ||
-      t.includes("maquis") ||
-      t.includes("grillade") ||
-      t.includes("fast food") ||
-      t.includes("cafe");
-
-    const routed =
-      text && text.trim().length >= 2
-        ? routeQuery(text)
-        : { intent: "UNKNOWN" as const, district: null, adminKey: null };
-    const district = routed?.district ?? null;
-    const adminKey = routed?.adminKey ?? null;
 
     setStatusText("Localisation...");
     const { nearLat, nearLng } = await getNearCoordsSafe(8000);
 
-    const finalIntent = picked.isClear ? audioIntent : routed?.intent ?? "UNKNOWN";
+    let finalIntent: DirectIntent = picked.isClear ? picked.intent : "UNKNOWN";
 
-    if (!picked.isClear && finalIntent === "UNKNOWN") {
-      if (looksOnCall) {
-        if (!hasWake) await maybeCoachWakeWord();
-        await navigateByIntent("PHARMACY_ON_CALL", text, district, nearLat, nearLng, adminKey);
-        return;
-      }
-      if (looksClinic) {
-        if (!hasWake) await maybeCoachWakeWord();
-        await navigateByIntent("CLINIC", text, district, nearLat, nearLng, adminKey);
-        return;
-      }
-      if (looksRestaurant) {
-        if (!hasWake) await maybeCoachWakeWord();
-        await navigateByIntent("RESTAURANT", text, district, nearLat, nearLng, adminKey);
-        return;
-      }
-      if (looksPharmacy) {
-        if (!hasWake) await maybeCoachWakeWord();
-        await navigateByIntent("PHARMACY", text, district, nearLat, nearLng, adminKey);
-        return;
-      }
+    if (finalIntent === "UNKNOWN" && text.trim().length >= 2) {
+      finalIntent = guessIntentFromText(text);
     }
 
-    const ok = await navigateByIntent(finalIntent, text, district, nearLat, nearLng, adminKey);
+    if (finalIntent === "UNKNOWN") {
+      if (!hasWake) await maybeCoachWakeWord();
+      setShowFallback(true);
+      await playUi("fallback_pharmacies_or_retry", selectedLang);
+      setStatusText("Choisis Pharmacie, Clinique, Restaurant ou réessaie au micro.");
+      return;
+    }
+
+    const ok = await navigateByIntent(finalIntent, text, nearLat, nearLng);
     if (!ok) {
       setShowFallback(true);
       await playUi("fallback_pharmacies_or_retry", selectedLang);
@@ -561,7 +599,6 @@ export default function HomeScreen({ navigation, route }: Props) {
               } catch {}
 
               const picked = pickClearAudioIntent(audioResp, 0.18, 0.35);
-              const audioIntent = picked.intent;
 
               let text = "";
               if (!picked.isClear) {
@@ -576,58 +613,25 @@ export default function HomeScreen({ navigation, route }: Props) {
 
               const t = (text || "").toLowerCase();
               const hasWake = t.includes("moul");
-              const looksPharmacy = t.includes("pharm") || t.includes("médic") || t.includes("medic");
-              const looksClinic =
-                t.includes("clini") ||
-                t.includes("hop") ||
-                t.includes("hôp") ||
-                t.includes("centre de santé") ||
-                t.includes("santé");
-              const looksOnCall = t.includes("garde") || t.includes("urgence");
-              const looksRestaurant =
-                t.includes("restaurant") ||
-                t.includes("manger") ||
-                t.includes("maquis") ||
-                t.includes("grillade") ||
-                t.includes("fast food") ||
-                t.includes("cafe");
-
-              const routed =
-                text && text.trim().length >= 2
-                  ? routeQuery(text)
-                  : { intent: "UNKNOWN" as const, district: null, adminKey: null };
-              const district = routed?.district ?? null;
-              const adminKey = routed?.adminKey ?? null;
 
               setStatusText("Localisation...");
               const { nearLat, nearLng } = await getNearCoordsSafe(8000);
 
-              const finalIntent = picked.isClear ? audioIntent : routed?.intent ?? "UNKNOWN";
+              let finalIntent: DirectIntent = picked.isClear ? picked.intent : "UNKNOWN";
 
-              if (!picked.isClear && finalIntent === "UNKNOWN") {
-                if (looksOnCall) {
-                  if (!hasWake) await maybeCoachWakeWord();
-                  await navigateByIntent("PHARMACY_ON_CALL", text, district, nearLat, nearLng, adminKey);
-                  return;
-                }
-                if (looksClinic) {
-                  if (!hasWake) await maybeCoachWakeWord();
-                  await navigateByIntent("CLINIC", text, district, nearLat, nearLng, adminKey);
-                  return;
-                }
-                if (looksRestaurant) {
-                  if (!hasWake) await maybeCoachWakeWord();
-                  await navigateByIntent("RESTAURANT", text, district, nearLat, nearLng, adminKey);
-                  return;
-                }
-                if (looksPharmacy) {
-                  if (!hasWake) await maybeCoachWakeWord();
-                  await navigateByIntent("PHARMACY", text, district, nearLat, nearLng, adminKey);
-                  return;
-                }
+              if (finalIntent === "UNKNOWN" && text.trim().length >= 2) {
+                finalIntent = guessIntentFromText(text);
               }
 
-              const ok = await navigateByIntent(finalIntent, text, district, nearLat, nearLng, adminKey);
+              if (finalIntent === "UNKNOWN") {
+                if (!hasWake) await maybeCoachWakeWord();
+                setShowFallback(true);
+                await playUi("fallback_pharmacies_or_retry", selectedLang);
+                setStatusText("Choisis Pharmacie, Clinique, Restaurant ou réessaie au micro.");
+                return;
+              }
+
+              const ok = await navigateByIntent(finalIntent, text, nearLat, nearLng);
               if (!ok) {
                 setShowFallback(true);
                 await playUi("fallback_pharmacies_or_retry", selectedLang);
@@ -677,40 +681,18 @@ export default function HomeScreen({ navigation, route }: Props) {
   }, [route?.params?.autoStartMic, showLangPicker]);
 
   const onDebugGo = async () => {
-    const routed = routeQuery(typed);
-    const { intent, district, adminKey } = routed;
-    setStatusText(`DEBUG: intent=${intent} | district=${district ?? "null"}`);
+    const intent = guessIntentFromText(typed);
+    setStatusText(`DEBUG: intent=${intent}`);
 
-    if (intent === "ADMIN_GUIDE" && adminKey) {
-      navigation.navigate("Guide", {
-        guideKey: adminKey,
-        lang: selectedLang === "mute" ? "fr" : selectedLang,
-      });
+    if (intent === "UNKNOWN") {
+      setShowFallback(true);
+      playUi("fallback_pharmacies_or_retry", selectedLang).catch(() => {});
       return;
     }
 
     setStatusText("Localisation...");
     const { nearLat, nearLng } = await getNearCoordsSafe(8000);
-
-    if (intent === "PHARMACY_ON_CALL") {
-      navigation.navigate("Results", { queryText: typed, intent: "PHARMACY_ON_CALL", district, nearLat, nearLng });
-      return;
-    }
-    if (intent === "PHARMACY") {
-      navigation.navigate("Results", { queryText: typed, intent: "PHARMACY", district, nearLat, nearLng });
-      return;
-    }
-    if (intent === "CLINIC") {
-      navigation.navigate("Results", { queryText: typed, intent: "CLINIC", district, nearLat, nearLng });
-      return;
-    }
-    if (intent === "RESTAURANT") {
-      navigation.navigate("Results", { queryText: typed, intent: "RESTAURANT", district, nearLat, nearLng });
-      return;
-    }
-
-    setShowFallback(true);
-    playUi("fallback_pharmacies_or_retry", selectedLang).catch(() => {});
+    await navigateByIntent(intent, typed, nearLat, nearLng);
   };
 
   if (showLangPicker) {
@@ -775,6 +757,8 @@ export default function HomeScreen({ navigation, route }: Props) {
           <Text style={styles.voiceCmd}>• Moulédji pharmacie</Text>
           <Text style={styles.voiceCmd}>• Moulédji clinique</Text>
           <Text style={styles.voiceCmd}>• Moulédji restaurant</Text>
+          <Text style={styles.voiceCmd}>• Moulédji passeport</Text>
+          <Text style={styles.voiceCmd}>• Moulédji carte d’identité</Text>
         </View>
 
         {statusText ? <Text style={styles.status}>{statusText}</Text> : null}
@@ -815,7 +799,7 @@ export default function HomeScreen({ navigation, route }: Props) {
             <TextInput
               value={typed}
               onChangeText={setTyped}
-              placeholder="Ex: pharmacie de garde"
+              placeholder="Ex: passeport"
               placeholderTextColor="#777"
               style={styles.input}
             />
