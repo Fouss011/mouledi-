@@ -1,5 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { View, Text, Pressable, StyleSheet, TextInput, Platform } from "react-native";
+import {
+  View,
+  Text,
+  Pressable,
+  StyleSheet,
+  TextInput,
+  Platform,
+  Animated,
+  Easing,
+  ScrollView,
+} from "react-native";
 import { Audio } from "expo-av";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import * as Location from "expo-location";
@@ -69,7 +79,9 @@ async function playUi(key: string, lang: UserLang = "mina") {
     const effectiveLang = mapUiLang(lang);
 
     const r = await fetch(
-      `${BASE_URL}/health/ui-audio?key=${encodeURIComponent(key)}&lang=${encodeURIComponent(effectiveLang)}`
+      `${BASE_URL}/health/ui-audio?key=${encodeURIComponent(key)}&lang=${encodeURIComponent(
+        effectiveLang
+      )}`
     );
     if (!r.ok) return;
 
@@ -185,9 +197,7 @@ function pickClearAudioIntent(
 function guessIntentFromText(text: string): DirectIntent {
   const t = (text || "").toLowerCase();
 
-  const looksPassport =
-    t.includes("passeport") ||
-    t.includes("passport");
+  const looksPassport = t.includes("passeport") || t.includes("passport");
 
   const looksCni =
     t.includes("carte d'identité") ||
@@ -214,10 +224,7 @@ function guessIntentFromText(text: string): DirectIntent {
     t.includes("fast food") ||
     t.includes("cafe");
 
-  const looksPharmacy =
-    t.includes("pharm") ||
-    t.includes("médic") ||
-    t.includes("medic");
+  const looksPharmacy = t.includes("pharm") || t.includes("médic") || t.includes("medic");
 
   if (looksPassport) return "PASSPORT";
   if (looksCni) return "CNI";
@@ -227,6 +234,29 @@ function guessIntentFromText(text: string): DirectIntent {
   if (looksPharmacy) return "PHARMACY";
   return "UNKNOWN";
 }
+
+function getStatusLabel(statusText: string, isListening: boolean) {
+  if (isListening) return "Enregistrement en cours";
+  if (!statusText) return "Prêt à écouter";
+  return statusText;
+}
+
+const COLORS = {
+  bg: "#050816",
+  surface: "#0D1324",
+  surface2: "#121A2D",
+  surface3: "#0B1020",
+  line: "rgba(255,255,255,0.08)",
+  lineStrong: "rgba(255,255,255,0.14)",
+  text: "#F5F7FB",
+  textSoft: "#AAB3C5",
+  textMuted: "#7E879A",
+  accent: "#53E5A7",
+  accent2: "#63A4FF",
+  accent3: "#8B7CFF",
+  danger: "#FF7A7A",
+  infoBg: "rgba(99,164,255,0.10)",
+};
 
 export default function HomeScreen({ navigation, route }: Props) {
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
@@ -244,6 +274,10 @@ export default function HomeScreen({ navigation, route }: Props) {
   const [showHiddenAccess, setShowHiddenAccess] = useState<boolean>(false);
 
   const isListening = useMemo(() => recording != null || webRec != null, [recording, webRec]);
+
+  const pulse = useRef(new Animated.Value(1)).current;
+  const halo = useRef(new Animated.Value(0.45)).current;
+  const glow = useRef(new Animated.Value(0.7)).current;
 
   const lastCoachRef = useRef<number>(0);
   const maybeCoachWakeWord = async () => {
@@ -285,6 +319,78 @@ export default function HomeScreen({ navigation, route }: Props) {
     route.params?.skipLanguagePicker,
     route.params?.autoStartMic,
   ]);
+
+  useEffect(() => {
+    let running: Animated.CompositeAnimation | null = null;
+
+    if (isListening) {
+      running = Animated.loop(
+        Animated.parallel([
+          Animated.sequence([
+            Animated.timing(pulse, {
+              toValue: 1.06,
+              duration: 900,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+            Animated.timing(pulse, {
+              toValue: 1,
+              duration: 900,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+          ]),
+          Animated.sequence([
+            Animated.timing(halo, {
+              toValue: 0.95,
+              duration: 900,
+              useNativeDriver: true,
+            }),
+            Animated.timing(halo, {
+              toValue: 0.5,
+              duration: 900,
+              useNativeDriver: true,
+            }),
+          ]),
+          Animated.sequence([
+            Animated.timing(glow, {
+              toValue: 1,
+              duration: 900,
+              useNativeDriver: true,
+            }),
+            Animated.timing(glow, {
+              toValue: 0.7,
+              duration: 900,
+              useNativeDriver: true,
+            }),
+          ]),
+        ])
+      );
+      running.start();
+    } else {
+      Animated.parallel([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+        Animated.timing(halo, {
+          toValue: 0.45,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+        Animated.timing(glow, {
+          toValue: 0.7,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+
+    return () => {
+      if (running) running.stop();
+    };
+  }, [isListening, pulse, halo, glow]);
 
   const handleTitlePress = () => {
     const next = titleTapCount + 1;
@@ -695,40 +801,66 @@ export default function HomeScreen({ navigation, route }: Props) {
     await navigateByIntent(intent, typed, nearLat, nearLng);
   };
 
+  const statusLabel = getStatusLabel(statusText, isListening);
+
   if (showLangPicker) {
     return (
       <View style={styles.container}>
-        <Pressable onPress={handleTitlePress}>
-          <Text style={styles.title}>MOULÉDI</Text>
-        </Pressable>
-        <Text style={styles.subtitle}>Choisis ta langue</Text>
+        <View style={styles.bgOrbTop} />
+        <View style={styles.bgOrbBottom} />
 
-        <View style={styles.langBox}>
-          <Pressable style={styles.langBtn} onPress={() => chooseLanguage("mina")}>
-            <Text style={styles.langBtnText}>Mina</Text>
+        <View style={styles.headerBlock}>
+          <Pressable onPress={handleTitlePress}>
+            <Text style={styles.title}>MOULÉDI</Text>
+          </Pressable>
+          <Text style={styles.heroSubtitle}>Choisis ta langue</Text>
+          <Text style={styles.heroDescription}>
+            Une interface vocale simple, élégante et accessible pour agir rapidement.
+          </Text>
+        </View>
+
+        <View style={styles.langGrid}>
+          <Pressable style={styles.langCard} onPress={() => chooseLanguage("mina")}>
+            <Text style={styles.langEmoji}>🌍</Text>
+            <View style={styles.langTextBox}>
+              <Text style={styles.langTitle}>Mina</Text>
+              <Text style={styles.langDesc}>Expérience vocale en mina</Text>
+            </View>
           </Pressable>
 
-          <Pressable style={styles.langBtn} onPress={() => chooseLanguage("kabyè")}>
-            <Text style={styles.langBtnText}>Kabyè</Text>
+          <Pressable style={styles.langCard} onPress={() => chooseLanguage("kabyè")}>
+            <Text style={styles.langEmoji}>🗣️</Text>
+            <View style={styles.langTextBox}>
+              <Text style={styles.langTitle}>Kabyè</Text>
+              <Text style={styles.langDesc}>Navigation et guides en kabyè</Text>
+            </View>
           </Pressable>
 
-          <Pressable style={styles.langBtn} onPress={() => chooseLanguage("fr")}>
-            <Text style={styles.langBtnText}>Français</Text>
+          <Pressable style={styles.langCard} onPress={() => chooseLanguage("fr")}>
+            <Text style={styles.langEmoji}>🇫🇷</Text>
+            <View style={styles.langTextBox}>
+              <Text style={styles.langTitle}>Français</Text>
+              <Text style={styles.langDesc}>Mode standard en français</Text>
+            </View>
           </Pressable>
 
-          <Pressable style={styles.langBtn} onPress={() => chooseLanguage("mute")}>
-            <Text style={styles.langBtnText}>Mode muet</Text>
+          <Pressable style={styles.langCard} onPress={() => chooseLanguage("mute")}>
+            <Text style={styles.langEmoji}>🔇</Text>
+            <View style={styles.langTextBox}>
+              <Text style={styles.langTitle}>Mode muet</Text>
+              <Text style={styles.langDesc}>Sans lecture audio</Text>
+            </View>
           </Pressable>
         </View>
 
         {showHiddenAccess ? (
           <View style={styles.bottomLinks}>
-            <Pressable onPress={() => navigation.navigate("CollectProvider")} style={styles.collectBtn}>
-              <Text style={styles.collectText}>Accès enquêteur</Text>
+            <Pressable onPress={() => navigation.navigate("CollectProvider")} style={styles.ghostBtn}>
+              <Text style={styles.ghostBtnText}>Accès enquêteur</Text>
             </Pressable>
 
-            <Pressable onPress={() => navigation.navigate("AdminReview")} style={styles.collectBtn}>
-              <Text style={styles.collectText}>Admin validation</Text>
+            <Pressable onPress={() => navigation.navigate("AdminReview")} style={styles.ghostBtn}>
+              <Text style={styles.ghostBtnText}>Admin validation</Text>
             </Pressable>
           </View>
         ) : null}
@@ -738,54 +870,150 @@ export default function HomeScreen({ navigation, route }: Props) {
 
   return (
     <View style={styles.container}>
-      <Pressable onPress={handleTitlePress}>
-        <Text style={styles.title}>MOULÉDI</Text>
-      </Pressable>
-      <Text style={styles.subtitle}>Toucher → Parler → Écouter → Agir</Text>
+      <View style={styles.bgOrbTop} />
+      <View style={styles.bgOrbBottom} />
 
-      <View style={styles.center}>
-        <Pressable style={[styles.micButton, isListening ? styles.micActive : null]} onPress={onPressMic}>
-          <Text style={styles.micText}>{isListening ? "⏹️" : "🎙️"}</Text>
-        </Pressable>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} bounces={false}>
+        <View style={styles.topBar}>
+          <View style={styles.brandBlock}>
+            <Pressable onPress={handleTitlePress}>
+              <Text style={styles.title}>MOULÉDI</Text>
+            </Pressable>
+            <Text style={styles.subtitle}>Parler. Comprendre. Trouver.</Text>
+          </View>
 
-        <Text style={styles.hint}>
-          {isListening ? "Enregistrement... (appuie STOP quand tu as fini)" : "Appuie pour parler, puis ré-appuie pour valider."}
-        </Text>
-
-        <View style={styles.voiceExamples}>
-          <Text style={styles.voiceTitle}>Dis par exemple :</Text>
-          <Text style={styles.voiceCmd}>• Moulédji pharmacie</Text>
-          <Text style={styles.voiceCmd}>• Moulédji clinique</Text>
-          <Text style={styles.voiceCmd}>• Moulédji restaurant</Text>
-          <Text style={styles.voiceCmd}>• Moulédji passeport</Text>
-          <Text style={styles.voiceCmd}>• Moulédji carte d’identité</Text>
+          <View style={styles.langPill}>
+            <Text style={styles.langPillText}>
+              {selectedLang === "mute"
+                ? "MUET"
+                : selectedLang === "fr"
+                ? "FR"
+                : selectedLang === "mina"
+                ? "MINA"
+                : "KABYÈ"}
+            </Text>
+          </View>
         </View>
 
-        {statusText ? <Text style={styles.status}>{statusText}</Text> : null}
+        <View style={styles.heroCard}>
+          <View style={styles.heroTopRow}>
+            <View style={styles.heroBadge}>
+              <Text style={styles.heroBadgeText}>VOICE AI</Text>
+            </View>
+          </View>
+
+          <Text style={styles.heroTitle}>Une recherche vocale qui agit vite</Text>
+          <Text style={styles.heroDescription}>
+            Appuie sur le micro, parle naturellement, puis laisse Moulédi comprendre et t’orienter.
+          </Text>
+
+          <View style={styles.voiceStateCard}>
+            <Text style={styles.voiceStateLabel}>{statusLabel}</Text>
+            <Text style={styles.voiceStateHint}>
+              {isListening
+                ? "Parle puis appuie de nouveau pour valider."
+                : "Exemple : “Moulédji pharmacie”"}
+            </Text>
+          </View>
+
+          <View style={styles.micWrap}>
+            <Animated.View
+              style={[
+                styles.outerHalo,
+                {
+                  transform: [{ scale: pulse }],
+                  opacity: halo,
+                },
+              ]}
+            />
+            <Animated.View
+              style={[
+                styles.middleHalo,
+                {
+                  transform: [{ scale: pulse }],
+                  opacity: glow,
+                },
+              ]}
+            />
+
+            <Pressable onPress={onPressMic} style={styles.micPressable}>
+              <Animated.View
+                style={[
+                  styles.micButton,
+                  isListening ? styles.micActive : null,
+                  { transform: [{ scale: pulse }] },
+                ]}
+              >
+                <Text style={styles.micText}>{isListening ? "⏹️" : "🎙️"}</Text>
+              </Animated.View>
+            </Pressable>
+          </View>
+
+          <Text style={styles.hint}>
+            {isListening
+              ? "Enregistrement en cours… appuie sur STOP quand tu as fini."
+              : "Appuie une fois pour parler, une deuxième fois pour envoyer."}
+          </Text>
+        </View>
+
+        <View style={styles.quickCard}>
+          <Text style={styles.sectionEyebrow}>Commandes rapides</Text>
+          <Text style={styles.sectionTitle}>Tu peux dire par exemple</Text>
+
+          <View style={styles.exampleList}>
+            <Text style={styles.exampleItem}>• Moulédji pharmacie</Text>
+            <Text style={styles.exampleItem}>• Moulédji clinique</Text>
+            <Text style={styles.exampleItem}>• Moulédji restaurant</Text>
+            <Text style={styles.exampleItem}>• Moulédji passeport</Text>
+            <Text style={styles.exampleItem}>• Moulédji carte d’identité</Text>
+          </View>
+        </View>
+
+        {statusText ? (
+          <View style={styles.statusCard}>
+            <Text style={styles.statusText}>{statusText}</Text>
+          </View>
+        ) : null}
 
         {showFallback ? (
           <View style={styles.choiceBox}>
-            <Text style={styles.choiceTitle}>Je peux te proposer :</Text>
+            <Text style={styles.sectionEyebrow}>Suggestion</Text>
+            <Text style={styles.sectionTitle}>Je peux te proposer</Text>
 
             <View style={styles.choiceColumn}>
               <Pressable onPress={openPharmacies} style={styles.choiceCard}>
-                <Text style={styles.choiceIcon}>💊</Text>
-                <Text style={styles.choiceText}>Pharmacies</Text>
+                <View style={styles.choiceIconWrap}>
+                  <Text style={styles.choiceIcon}>💊</Text>
+                </View>
+                <View style={styles.choiceTextBox}>
+                  <Text style={styles.choiceText}>Pharmacies</Text>
+                  <Text style={styles.choiceSubtext}>Trouver les pharmacies proches</Text>
+                </View>
               </Pressable>
 
               <Pressable onPress={openClinics} style={styles.choiceCard}>
-                <Text style={styles.choiceIcon}>🏥</Text>
-                <Text style={styles.choiceText}>Cliniques</Text>
+                <View style={styles.choiceIconWrap}>
+                  <Text style={styles.choiceIcon}>🏥</Text>
+                </View>
+                <View style={styles.choiceTextBox}>
+                  <Text style={styles.choiceText}>Cliniques</Text>
+                  <Text style={styles.choiceSubtext}>Chercher un centre de santé</Text>
+                </View>
               </Pressable>
 
               <Pressable onPress={openRestaurants} style={styles.choiceCard}>
-                <Text style={styles.choiceIcon}>🍽️</Text>
-                <Text style={styles.choiceText}>Restaurants</Text>
+                <View style={styles.choiceIconWrap}>
+                  <Text style={styles.choiceIcon}>🍽️</Text>
+                </View>
+                <View style={styles.choiceTextBox}>
+                  <Text style={styles.choiceText}>Restaurants</Text>
+                  <Text style={styles.choiceSubtext}>Voir les adresses autour de toi</Text>
+                </View>
               </Pressable>
             </View>
 
-            <Pressable onPress={onPressMic} style={styles.choiceMicBtn}>
-              <Text style={styles.choiceMicText}>Réessayer 🎙️</Text>
+            <Pressable onPress={onPressMic} style={styles.primaryRetryBtn}>
+              <Text style={styles.primaryRetryBtnText}>Réessayer avec le micro</Text>
             </Pressable>
           </View>
         ) : null}
@@ -795,159 +1023,488 @@ export default function HomeScreen({ navigation, route }: Props) {
         </Pressable>
 
         {debugMode ? (
-          <>
+          <View style={styles.debugCard}>
             <TextInput
               value={typed}
               onChangeText={setTyped}
               placeholder="Ex: passeport"
-              placeholderTextColor="#777"
+              placeholderTextColor={COLORS.textMuted}
               style={styles.input}
             />
             <Pressable onPress={onDebugGo} style={styles.debugBtn}>
               <Text style={styles.debugText}>Tester avec le texte</Text>
             </Pressable>
-          </>
+          </View>
         ) : null}
-      </View>
 
-      {showHiddenAccess ? (
-        <View style={styles.bottomLinks}>
-          <Pressable onPress={() => navigation.navigate("CollectProvider")} style={styles.collectBtn}>
-            <Text style={styles.collectText}>Accès enquêteur</Text>
-          </Pressable>
+        {showHiddenAccess ? (
+          <View style={styles.bottomLinks}>
+            <Pressable onPress={() => navigation.navigate("CollectProvider")} style={styles.ghostBtn}>
+              <Text style={styles.ghostBtnText}>Accès enquêteur</Text>
+            </Pressable>
 
-          <Pressable onPress={() => navigation.navigate("AdminReview")} style={styles.collectBtn}>
-            <Text style={styles.collectText}>Admin validation</Text>
-          </Pressable>
-        </View>
-      ) : null}
+            <Pressable onPress={() => navigation.navigate("AdminReview")} style={styles.ghostBtn}>
+              <Text style={styles.ghostBtnText}>Admin validation</Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#000", paddingTop: 64, paddingHorizontal: 20 },
-  title: { color: "#fff", fontSize: 28, fontWeight: "800", letterSpacing: 4 },
-  subtitle: { color: "#bbb", marginTop: 6, fontSize: 14 },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 14 },
-
-  langBox: {
-    marginTop: 40,
-    gap: 12,
-  },
-  langBtn: {
-    backgroundColor: "#111",
-    borderColor: "#222",
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingVertical: 14,
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.bg,
+    paddingTop: 58,
     paddingHorizontal: 20,
+  },
+
+  scrollContent: {
+    paddingBottom: 36,
+  },
+
+  bgOrbTop: {
+    position: "absolute",
+    top: -80,
+    right: -40,
+    width: 220,
+    height: 220,
+    borderRadius: 999,
+    backgroundColor: "rgba(99,164,255,0.08)",
+  },
+
+  bgOrbBottom: {
+    position: "absolute",
+    bottom: 60,
+    left: -60,
+    width: 240,
+    height: 240,
+    borderRadius: 999,
+    backgroundColor: "rgba(83,229,167,0.06)",
+  },
+
+  topBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 22,
+  },
+
+  brandBlock: {
+    flex: 1,
+    paddingRight: 12,
+  },
+
+  headerBlock: {
+    marginTop: 16,
+    marginBottom: 28,
+  },
+
+  title: {
+    color: COLORS.text,
+    fontSize: 33,
+    fontWeight: "900",
+    letterSpacing: 4,
+  },
+
+  subtitle: {
+    color: COLORS.textSoft,
+    marginTop: 8,
+    fontSize: 15,
+  },
+
+  heroSubtitle: {
+    color: COLORS.textSoft,
+    marginTop: 10,
+    fontSize: 16,
+  },
+
+  heroTopRow: {
+    width: "100%",
+    alignItems: "flex-start",
+    marginBottom: 10,
+  },
+
+  heroBadge: {
+    backgroundColor: "rgba(99,164,255,0.14)",
+    borderColor: "rgba(99,164,255,0.18)",
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+
+  heroBadgeText: {
+    color: COLORS.text,
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1,
+  },
+
+  heroTitle: {
+    color: COLORS.text,
+    fontSize: 24,
+    fontWeight: "800",
+    textAlign: "center",
+    marginBottom: 10,
+  },
+
+  heroDescription: {
+    color: COLORS.textSoft,
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: "center",
+  },
+
+  langPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "rgba(99,164,255,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(99,164,255,0.18)",
+  },
+
+  langPillText: {
+    color: COLORS.text,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+
+  heroCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    padding: 22,
+    alignItems: "center",
+    marginBottom: 16,
+  },
+
+  voiceStateCard: {
+    width: "100%",
+    marginTop: 18,
+    marginBottom: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    backgroundColor: COLORS.surface2,
+    borderWidth: 1,
+    borderColor: COLORS.line,
     alignItems: "center",
   },
-  langBtnText: { color: "#fff", fontWeight: "800", fontSize: 16 },
+
+  voiceStateLabel: {
+    color: COLORS.text,
+    fontSize: 15,
+    fontWeight: "800",
+  },
+
+  voiceStateHint: {
+    color: COLORS.textSoft,
+    fontSize: 13,
+    marginTop: 4,
+    textAlign: "center",
+  },
+
+  micWrap: {
+    width: 290,
+    height: 290,
+    alignItems: "center",
+    justifyContent: "center",
+    marginVertical: 4,
+  },
+
+  outerHalo: {
+    position: "absolute",
+    width: 270,
+    height: 270,
+    borderRadius: 999,
+    backgroundColor: "rgba(99,164,255,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(99,164,255,0.12)",
+  },
+
+  middleHalo: {
+    position: "absolute",
+    width: 225,
+    height: 225,
+    borderRadius: 999,
+    backgroundColor: "rgba(83,229,167,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(83,229,167,0.12)",
+  },
+
+  micPressable: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
 
   micButton: {
-    width: 210,
-    height: 210,
-    borderRadius: 105,
-    backgroundColor: "#111",
+    width: 182,
+    height: 182,
+    borderRadius: 999,
+    backgroundColor: COLORS.surface3,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 3,
-    borderColor: "#222",
-    marginVertical: 10,
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.08)",
+    shadowColor: "#63A4FF",
+    shadowOpacity: 0.22,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
   },
-  micActive: { borderColor: "#555" },
-  micText: { fontSize: 76 },
 
-  hint: { color: "#ddd", textAlign: "center", marginTop: 6 },
-  status: { color: "#bbb", textAlign: "center", marginTop: 6 },
+  micActive: {
+    borderColor: "rgba(83,229,167,0.45)",
+  },
 
-  voiceExamples: { marginTop: 6, alignItems: "center" },
-  voiceTitle: { color: "#888", fontSize: 13, marginBottom: 4 },
-  voiceCmd: { color: "#fff", fontSize: 15, fontWeight: "600", marginTop: 2 },
+  micText: {
+    fontSize: 70,
+  },
+
+  hint: {
+    color: COLORS.textSoft,
+    textAlign: "center",
+    marginTop: 8,
+    lineHeight: 22,
+    fontSize: 14,
+    paddingHorizontal: 8,
+  },
+
+  quickCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    padding: 20,
+    marginBottom: 14,
+  },
+
+  sectionEyebrow: {
+    color: COLORS.accent,
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    marginBottom: 8,
+  },
+
+  sectionTitle: {
+    color: COLORS.text,
+    fontSize: 20,
+    fontWeight: "800",
+    marginBottom: 14,
+  },
+
+  exampleList: {
+    gap: 8,
+  },
+
+  exampleItem: {
+    color: COLORS.text,
+    fontSize: 15,
+    fontWeight: "600",
+    lineHeight: 22,
+  },
+
+  statusCard: {
+    backgroundColor: COLORS.infoBg,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(99,164,255,0.14)",
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 14,
+  },
+
+  statusText: {
+    color: COLORS.text,
+    textAlign: "center",
+    fontWeight: "700",
+  },
 
   choiceBox: {
-    width: "100%",
-    marginTop: 10,
-    padding: 14,
-    borderRadius: 14,
+    backgroundColor: COLORS.surface,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: "#222",
-    backgroundColor: "#0b0b0b",
+    borderColor: COLORS.line,
+    padding: 20,
+    marginBottom: 14,
   },
-  choiceTitle: { color: "#fff", fontWeight: "800", marginBottom: 10 },
-  choiceColumn: { gap: 12 },
+
+  choiceColumn: {
+    gap: 12,
+    marginTop: 4,
+  },
+
   choiceCard: {
-    backgroundColor: "#111",
-    borderColor: "#222",
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.surface2,
+    borderRadius: 18,
     borderWidth: 1,
-    borderRadius: 14,
-    paddingVertical: 14,
+    borderColor: COLORS.line,
+    padding: 14,
+  },
+
+  choiceIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.04)",
     alignItems: "center",
     justifyContent: "center",
+    marginRight: 12,
   },
-  choiceIcon: { fontSize: 34, marginBottom: 6 },
-  choiceText: { color: "#fff", fontWeight: "800" },
-  choiceMicBtn: {
-    marginTop: 12,
-    backgroundColor: "#111",
-    borderColor: "#222",
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 10,
+
+  choiceIcon: {
+    fontSize: 26,
+  },
+
+  choiceTextBox: {
+    flex: 1,
+  },
+
+  choiceText: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: "800",
+    marginBottom: 2,
+  },
+
+  choiceSubtext: {
+    color: COLORS.textSoft,
+    fontSize: 13,
+  },
+
+  primaryRetryBtn: {
+    marginTop: 16,
+    backgroundColor: COLORS.accent,
+    borderRadius: 16,
+    paddingVertical: 14,
     alignItems: "center",
   },
-  choiceMicText: { color: "#fff", fontWeight: "800" },
+
+  primaryRetryBtnText: {
+    color: "#04120B",
+    fontWeight: "900",
+    fontSize: 15,
+  },
 
   debugToggle: {
-    marginTop: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
+    alignSelf: "center",
+    marginTop: 4,
+    marginBottom: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#222",
-    backgroundColor: "#0b0b0b",
+    borderColor: COLORS.lineStrong,
+    backgroundColor: "rgba(255,255,255,0.03)",
   },
-  debugToggleText: { color: "#aaa", fontSize: 12, fontWeight: "600" },
+
+  debugToggleText: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+
+  debugCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    padding: 14,
+    marginBottom: 12,
+  },
 
   input: {
     width: "100%",
-    backgroundColor: "#0b0b0b",
-    borderColor: "#222",
+    backgroundColor: COLORS.surface2,
+    borderColor: COLORS.line,
     borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: "#fff",
-    marginTop: 10,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    color: COLORS.text,
+    marginBottom: 12,
   },
+
   debugBtn: {
     width: "100%",
-    backgroundColor: "#111",
-    borderColor: "#222",
+    backgroundColor: "rgba(99,164,255,0.14)",
+    borderColor: "rgba(99,164,255,0.18)",
     borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 10,
+    borderRadius: 14,
+    paddingVertical: 12,
     alignItems: "center",
   },
-  debugText: { color: "#fff", fontWeight: "700" },
+
+  debugText: {
+    color: COLORS.text,
+    fontWeight: "800",
+  },
+
+  langGrid: {
+    marginTop: 18,
+    gap: 14,
+  },
+
+  langCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.surface,
+    borderColor: COLORS.line,
+    borderWidth: 1,
+    borderRadius: 22,
+    paddingVertical: 18,
+    paddingHorizontal: 16,
+  },
+
+  langEmoji: {
+    fontSize: 24,
+    marginRight: 14,
+  },
+
+  langTextBox: {
+    flex: 1,
+  },
+
+  langTitle: {
+    color: COLORS.text,
+    fontWeight: "800",
+    fontSize: 17,
+    marginBottom: 4,
+  },
+
+  langDesc: {
+    color: COLORS.textSoft,
+    fontSize: 13,
+  },
 
   bottomLinks: {
     gap: 10,
-    marginBottom: 20,
+    marginTop: 10,
+    marginBottom: 16,
   },
-  collectBtn: {
+
+  ghostBtn: {
     alignSelf: "center",
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#222",
-    backgroundColor: "#0b0b0b",
+    borderColor: COLORS.lineStrong,
+    backgroundColor: "rgba(255,255,255,0.03)",
   },
-  collectText: {
-    color: "#777",
+
+  ghostBtnText: {
+    color: COLORS.textSoft,
     fontSize: 12,
+    fontWeight: "700",
   },
 });
