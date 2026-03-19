@@ -2,13 +2,28 @@ import React from "react";
 import { View, Text, StyleSheet, Pressable, ScrollView } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../../App";
-import { ADMIN_GUIDES } from "../data/adminGuides";
+import { ADMIN_GUIDES, GuideLanguage } from "../data/adminGuides";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Guide">;
 
+type GuideKey = "passport" | "cni" | "casier";
+
 export default function GuideScreen({ navigation, route }: Props) {
-  const { guideKey, lang = "fr" } = route.params;
-  const guide = ADMIN_GUIDES[guideKey]?.[lang] || ADMIN_GUIDES[guideKey]?.fr;
+  const rawGuideKey = route.params?.guideKey;
+  const rawLang = route.params?.lang;
+
+  const lang: GuideLanguage =
+    rawLang === "fr" || rawLang === "mina" || rawLang === "kabyè" ? rawLang : "fr";
+
+  const guideKey: GuideKey =
+    rawGuideKey === "passport" || rawGuideKey === "cni" || rawGuideKey === "casier"
+      ? rawGuideKey
+      : "passport";
+
+  const guide =
+    ADMIN_GUIDES?.[lang]?.[guideKey] ??
+    ADMIN_GUIDES?.fr?.[guideKey] ??
+    ADMIN_GUIDES.fr.passport;
 
   return (
     <View style={styles.container}>
@@ -28,7 +43,9 @@ export default function GuideScreen({ navigation, route }: Props) {
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.card}>
-          <Text style={styles.intro}>{guide.intro}</Text>
+          <Text style={styles.intro}>
+            Suis les étapes ci-dessous pour comprendre rapidement la procédure.
+          </Text>
 
           <View style={styles.divider} />
 
@@ -37,9 +54,10 @@ export default function GuideScreen({ navigation, route }: Props) {
               <View style={styles.badge}>
                 <Text style={styles.badgeText}>{idx + 1}</Text>
               </View>
+
               <View style={styles.stepContent}>
-                <Text style={styles.stepLabel}>Étape {idx + 1}</Text>
-                <Text style={styles.stepText}>{step}</Text>
+                <Text style={styles.stepLabel}>{step.title}</Text>
+                <Text style={styles.stepText}>{step.body}</Text>
               </View>
             </View>
           ))}
