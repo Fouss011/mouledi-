@@ -75,6 +75,13 @@ export const BASE_URL =
 export const STT_URL =
   Platform.OS === "web" ? STT_BASE_URL : USE_REMOTE_SERVICES ? STT_BASE_URL : DEV_STT_URL;
 
+// Fallback discret quand Safari/iPhone ne renvoie pas la géoloc.
+// N'agit QUE si nearLat / nearLng sont absents.
+const DEFAULT_FALLBACK_COORDS = {
+  lat: 6.1319,
+  lng: 1.2228,
+};
+
 // ----------------------
 // Helpers: timeout + retry
 // ----------------------
@@ -160,11 +167,20 @@ function buildProvidersUrl(opts: {
   if (opts.onCallNow) params.set("on_call_now", "true");
   if (opts.district) params.set("district", opts.district);
 
-  if (opts.nearLat != null && opts.nearLng != null) {
+  const hasUserCoords = opts.nearLat != null && opts.nearLng != null;
+
+  if (hasUserCoords) {
+    // Comportement actuel conservé
     params.set("near_lat", String(opts.nearLat));
     params.set("near_lng", String(opts.nearLng));
     params.set("source", "auto");
     params.set("max_km", String(opts.maxKm ?? 5));
+  } else {
+    // Fallback doux: on garde le moteur vivant même si Safari ne donne pas la position
+    params.set("near_lat", String(DEFAULT_FALLBACK_COORDS.lat));
+    params.set("near_lng", String(DEFAULT_FALLBACK_COORDS.lng));
+    params.set("source", "osm");
+    params.set("max_km", String(opts.maxKm ?? 10));
   }
 
   return `${BASE_URL}/health/providers?${params.toString()}`;
@@ -237,7 +253,7 @@ export async function searchPharmacies(
     limit: 50,
     nearLat,
     nearLng,
-    maxKm: 5,
+    maxKm: 8,
   });
   return (await fetchProviders(url)) as PharmacyItem[];
 }
@@ -254,7 +270,7 @@ export async function searchClinics(
     limit: 50,
     nearLat,
     nearLng,
-    maxKm: 5,
+    maxKm: 8,
   });
   return (await fetchProviders(url)) as PharmacyItem[];
 }
@@ -271,7 +287,7 @@ export async function searchRestaurants(
     limit: 50,
     nearLat,
     nearLng,
-    maxKm: 7,
+    maxKm: 10,
   });
   return (await fetchProviders(url)) as RestaurantItem[];
 }

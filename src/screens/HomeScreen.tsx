@@ -117,46 +117,95 @@ async function playUi(key: string, lang: UserLang = "mina") {
 async function getNearCoordsSafe(
   timeoutMs = 8000
 ): Promise<{ nearLat: number | null; nearLng: number | null }> {
-  if (Platform.OS === "web" && typeof navigator !== "undefined" && (navigator as any).geolocation) {
-    return await new Promise((resolve) => {
-      let done = false;
+  if (Platform.OS === "web" && typeof window !== "undefined" && typeof navigator !== "undefined") {
+    const nav = navigator as any;
 
-      const timer = setTimeout(() => {
-        if (done) return;
-        done = true;
-        resolve({ nearLat: null, nearLng: null });
-      }, timeoutMs);
+    // Sur Safari iPhone, la géoloc ne marche que dans un contexte sécurisé (HTTPS)
+    if (!window.isSecureContext) {
+      console.log("Geolocation unavailable: insecure context");
+      return { nearLat: null, nearLng: null };
+    }
 
-      (navigator as any).geolocation.getCurrentPosition(
-        (pos: any) => {
+    if (!nav.geolocation) {
+      console.log("Geolocation unavailable: navigator.geolocation missing");
+      return { nearLat: null, nearLng: null };
+    }
+
+    const getPosition = (
+      options: PositionOptions
+    ): Promise<{ nearLat: number | null; nearLng: number | null }> =>
+      new Promise((resolve) => {
+        let done = false;
+
+        const timer = setTimeout(() => {
           if (done) return;
           done = true;
-          clearTimeout(timer);
-          resolve({ nearLat: pos.coords.latitude, nearLng: pos.coords.longitude });
-        },
-        () => {
-          if (done) return;
-          done = true;
-          clearTimeout(timer);
           resolve({ nearLat: null, nearLng: null });
-        },
-        { enableHighAccuracy: true, timeout: timeoutMs }
-      );
+        }, timeoutMs);
+
+        nav.geolocation.getCurrentPosition(
+          (pos: GeolocationPosition) => {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            resolve({
+              nearLat: pos.coords.latitude,
+              nearLng: pos.coords.longitude,
+            });
+          },
+          (err: GeolocationPositionError) => {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            console.log("Geolocation error:", err.code, err.message);
+            resolve({ nearLat: null, nearLng: null });
+          },
+          options
+        );
+      });
+
+    // 1) tentative légère, souvent plus fiable sur Safari
+    const quick = await getPosition({
+      enableHighAccuracy: false,
+      timeout: Math.min(timeoutMs, 6000),
+      maximumAge: 120000,
     });
+
+    if (quick.nearLat != null && quick.nearLng != null) {
+      return quick;
+    }
+
+    // 2) fallback plus précis si la première tentative échoue
+    const precise = await getPosition({
+      enableHighAccuracy: true,
+      timeout: timeoutMs,
+      maximumAge: 0,
+    });
+
+    return precise;
   }
 
   try {
     const perm = await Location.requestForegroundPermissionsAsync();
     if (!perm.granted) return { nearLat: null, nearLng: null };
 
-    const locPromise = Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs));
+    const locPromise = Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.Balanced,
+    });
+
+    const timeoutPromise = new Promise<null>((resolve) =>
+      setTimeout(() => resolve(null), timeoutMs)
+    );
 
     const loc = (await Promise.race([locPromise, timeoutPromise])) as any;
     if (!loc?.coords) return { nearLat: null, nearLng: null };
 
-    return { nearLat: loc.coords.latitude, nearLng: loc.coords.longitude };
-  } catch {
+    return {
+      nearLat: loc.coords.latitude,
+      nearLng: loc.coords.longitude,
+    };
+  } catch (e) {
+    console.log("Location native error:", e);
     return { nearLat: null, nearLng: null };
   }
 }
