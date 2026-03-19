@@ -75,6 +75,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bg,
     paddingTop: 54,
     paddingHorizontal: 16,
+    overflow: "hidden",
   },
 
   bgOrbTop: {

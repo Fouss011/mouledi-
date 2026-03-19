@@ -949,8 +949,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.bg,
-    paddingTop: 54,
-    paddingHorizontal: 16,
+    paddingTop: 58,
+    paddingHorizontal: 20,
+    overflow: "hidden",
   },
 
   bgOrbTop: {

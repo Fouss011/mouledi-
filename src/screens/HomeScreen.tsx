@@ -821,7 +821,7 @@ export default function HomeScreen({ navigation, route }: Props) {
 
         <View style={styles.langGrid}>
           <Pressable style={styles.langCard} onPress={() => chooseLanguage("mina")}>
-            <Text style={styles.langEmoji}>🌍</Text>
+            <Text style={styles.langEmoji}>🗣️</Text>
             <View style={styles.langTextBox}>
               <Text style={styles.langTitle}>Mina</Text>
               <Text style={styles.langDesc}>Expérience vocale en mina</Text>
@@ -873,7 +873,7 @@ export default function HomeScreen({ navigation, route }: Props) {
       <View style={styles.bgOrbTop} />
       <View style={styles.bgOrbBottom} />
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} bounces={false}>
+      <View style={styles.stickyHeader}>
         <View style={styles.topBar}>
           <View style={styles.brandBlock}>
             <Pressable onPress={handleTitlePress}>
@@ -894,7 +894,15 @@ export default function HomeScreen({ navigation, route }: Props) {
             </Text>
           </View>
         </View>
+      </View>
 
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        alwaysBounceVertical={false}
+      >
         <View style={styles.heroCard}>
           <View style={styles.heroTopRow}>
             <View style={styles.heroBadge}>
@@ -1059,10 +1067,17 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bg,
     paddingTop: 58,
     paddingHorizontal: 20,
+    overflow: "hidden",
+  },
+
+  scrollView: {
+    flex: 1,
+    backgroundColor: COLORS.bg,
   },
 
   scrollContent: {
     paddingBottom: 36,
+    flexGrow: 1,
   },
 
   bgOrbTop: {
@@ -1085,11 +1100,16 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(83,229,167,0.06)",
   },
 
+  stickyHeader: {
+    backgroundColor: COLORS.bg,
+    paddingBottom: 14,
+    zIndex: 20,
+  },
+
   topBar: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    marginBottom: 22,
   },
 
   brandBlock: {
