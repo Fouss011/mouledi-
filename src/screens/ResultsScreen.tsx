@@ -1,5 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { View, Text, StyleSheet, Pressable, FlatList, Linking, Platform } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  FlatList,
+  Linking,
+  Platform,
+  Animated,
+} from "react-native";
 import * as Speech from "expo-speech";
 import { Audio } from "expo-av";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -185,9 +194,7 @@ function pickClearAudioIntent(
 function guessIntentFromText(text: string): AudioIntent {
   const t = (text || "").toLowerCase();
 
-  const looksPassport =
-    t.includes("passeport") ||
-    t.includes("passport");
+  const looksPassport = t.includes("passeport") || t.includes("passport");
 
   const looksCni =
     t.includes("carte d'identité") ||
@@ -228,6 +235,24 @@ function guessIntentFromText(text: string): AudioIntent {
   return "UNKNOWN";
 }
 
+const COLORS = {
+  bg: "#050816",
+  surface: "#0D1324",
+  surface2: "#121A2D",
+  surface3: "#0B1020",
+  line: "rgba(255,255,255,0.08)",
+  lineStrong: "rgba(255,255,255,0.14)",
+  text: "#F5F7FB",
+  textSoft: "#AAB3C5",
+  textMuted: "#7E879A",
+  accent: "#53E5A7",
+  accent2: "#63A4FF",
+  accent3: "#8B7CFF",
+  danger: "#FF7A7A",
+  successBg: "rgba(83,229,167,0.10)",
+  infoBg: "rgba(99,164,255,0.10)",
+};
+
 export default function ResultsScreen({ navigation, route }: Props) {
   const { district, queryText, nearLat, nearLng, intent } = route.params;
 
@@ -244,6 +269,8 @@ export default function ResultsScreen({ navigation, route }: Props) {
 
   const [webRec, setWebRec] = useState<MediaRecorder | null>(null);
 
+  const pulse = useRef(new Animated.Value(1)).current;
+
   const mode = useMemo(() => {
     if (intent === "PHARMACY_ON_CALL") return "oncall";
     if (intent === "CLINIC") return "clinic";
@@ -251,6 +278,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
     return "all";
   }, [intent]);
 
+  const isListening = recording != null || webRec != null;
   const failCountRef = useRef(0);
 
   useEffect(() => {
@@ -264,6 +292,38 @@ export default function ResultsScreen({ navigation, route }: Props) {
       } catch {}
     })();
   }, []);
+
+  useEffect(() => {
+    let loop: Animated.CompositeAnimation | null = null;
+
+    if (isListening) {
+      loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulse, {
+            toValue: 1.08,
+            duration: 850,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulse, {
+            toValue: 1,
+            duration: 850,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      loop.start();
+    } else {
+      Animated.timing(pulse, {
+        toValue: 1,
+        duration: 180,
+        useNativeDriver: true,
+      }).start();
+    }
+
+    return () => {
+      if (loop) loop.stop();
+    };
+  }, [isListening, pulse]);
 
   const loadData = async (
     d: string | null,
@@ -706,8 +766,91 @@ export default function ResultsScreen({ navigation, route }: Props) {
       ? "Restaurants"
       : "Pharmacies";
 
+  const renderItem = ({ item, index }: { item: ResultItem; index: number }) => {
+    const distanceLine =
+      item.distance_km != null
+        ? `${item.distance_km} km`
+        : hasCoords
+        ? "Distance..."
+        : "Sans distance";
+
+    const locality = [item.district || null, item.city || null].filter(Boolean).join(", ") || "Localisation non précisée";
+
+    return (
+      <Pressable onPress={() => speakNameOnly(item.name)} style={styles.card}>
+        <View style={styles.cardTopRow}>
+          <View style={styles.titleWrap}>
+            <View style={styles.indexBadge}>
+              <Text style={styles.indexBadgeText}>{index + 1}</Text>
+            </View>
+
+            <View style={styles.titleTextWrap}>
+              <Text style={styles.cardTitle}>{item.name}</Text>
+              <Text style={styles.cardMeta}>{locality}</Text>
+            </View>
+          </View>
+
+          <Pressable
+            onPress={async () => {
+              await stopAllAudio();
+              await openMaps(item);
+            }}
+            style={styles.mapBtn}
+          >
+            <Text style={styles.mapBtnText}>🗺️</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.infoRow}>
+          <View style={styles.infoPill}>
+            <Text style={styles.infoPillText}>📍 {distanceLine}</Text>
+          </View>
+
+          {item.type ? (
+            <View style={styles.infoPillMuted}>
+              <Text style={styles.infoPillMutedText}>{String(item.type).toUpperCase()}</Text>
+            </View>
+          ) : null}
+        </View>
+
+        {item.phone ? <Text style={styles.cardSub}>📞 {item.phone}</Text> : null}
+
+        <View style={styles.actionRow}>
+          {item.phone ? (
+            <Pressable
+              onPress={async () => {
+                await stopAllAudio();
+                callPhone(item.phone);
+              }}
+              style={styles.callBtn}
+            >
+              <Text style={styles.callText}>Appeler</Text>
+            </Pressable>
+          ) : (
+            <View style={styles.callBtnDisabled}>
+              <Text style={styles.callTextDisabled}>Téléphone indisponible</Text>
+            </View>
+          )}
+
+          <Pressable
+            onPress={async () => {
+              await stopAllAudio();
+              await openMaps(item);
+            }}
+            style={styles.routeBtn}
+          >
+            <Text style={styles.routeBtnText}>Itinéraire</Text>
+          </Pressable>
+        </View>
+      </Pressable>
+    );
+  };
+
   return (
     <View style={styles.container}>
+      <View style={styles.bgOrbTop} />
+      <View style={styles.bgOrbBottom} />
+
       <View style={styles.header}>
         <Pressable
           onPress={async () => {
@@ -719,112 +862,83 @@ export default function ResultsScreen({ navigation, route }: Props) {
           <Text style={styles.backText}>←</Text>
         </Pressable>
 
-        <View style={{ flex: 1 }}>
+        <View style={styles.headerTextWrap}>
           <Text style={styles.title}>{pageTitle}</Text>
-
           <Text style={styles.subtitle}>
-            {hasCoords ? "Triés par distance (près de vous)" : district ? `Quartier: ${district}` : "Sans localisation"}
+            {hasCoords ? "Triés par distance" : district ? `Quartier : ${district}` : "Sans localisation"}
           </Text>
-
-          <Text style={styles.query}>Requête: {queryText}</Text>
+          <Text style={styles.query}>Requête : {queryText}</Text>
         </View>
 
-        <Pressable
-          onPress={async () => {
-            await stopAllAudio();
-            navigation.reset({
-              index: 0,
-              routes: [
-                {
-                  name: "Home",
-                  params: {
-                    autoStartMic: true,
-                    skipLanguagePicker: true,
-                  } as any,
-                },
-              ],
-            });
-          }}
-          style={styles.micMini}
-        >
-          <Text style={styles.micMiniText}>🎙️</Text>
-        </Pressable>
+        <Animated.View style={{ transform: [{ scale: pulse }] }}>
+          <Pressable
+            onPress={async () => {
+              await stopAllAudio();
+              navigation.reset({
+                index: 0,
+                routes: [
+                  {
+                    name: "Home",
+                    params: {
+                      autoStartMic: true,
+                      skipLanguagePicker: true,
+                    } as any,
+                  },
+                ],
+              });
+            }}
+            style={[styles.micMini, isListening ? styles.micMiniActive : null]}
+          >
+            <Text style={styles.micMiniText}>{isListening ? "⏹️" : "🎙️"}</Text>
+          </Pressable>
+        </Animated.View>
       </View>
 
-      {statusText ? <Text style={styles.status}>{statusText}</Text> : null}
+      {statusText ? (
+        <View style={styles.statusCard}>
+          <Text style={styles.status}>{statusText}</Text>
+        </View>
+      ) : null}
 
       {!hasCoords ? (
         <View style={styles.geoBox}>
-          <Text style={styles.geoText}>Active la localisation pour voir la distance et le tri près de toi.</Text>
+          <View style={styles.geoTextWrap}>
+            <Text style={styles.geoTitle}>Active la localisation</Text>
+            <Text style={styles.geoText}>
+              Pour afficher la distance et classer les résultats autour de toi.
+            </Text>
+          </View>
+
           <Pressable onPress={requestGeoAndReload} style={styles.geoBtn}>
             <Text style={styles.geoBtnText}>Activer</Text>
           </Pressable>
         </View>
       ) : null}
 
-      {loading ? <Text style={styles.loading}>Chargement...</Text> : null}
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {loading ? (
+        <View style={styles.feedbackBox}>
+          <Text style={styles.loading}>Chargement...</Text>
+        </View>
+      ) : null}
+
+      {error ? (
+        <View style={styles.errorBox}>
+          <Text style={styles.error}>{error}</Text>
+        </View>
+      ) : null}
 
       {!loading && !error ? (
         <FlatList
           data={items}
           keyExtractor={(it, idx) => `${it.provider_id ?? it.name}-${idx}`}
-          contentContainerStyle={{ paddingBottom: 30, paddingTop: 4 }}
-          renderItem={({ item, index }) => {
-            const distanceLine =
-              item.distance_km != null
-                ? ` • ${item.distance_km} km`
-                : hasCoords
-                ? " • …"
-                : "";
-
-            return (
-              <Pressable onPress={() => speakNameOnly(item.name)} style={styles.card}>
-                <View style={styles.cardTopRow}>
-                  <View style={styles.titleWrap}>
-                    <View style={styles.indexBadge}>
-                      <Text style={styles.indexBadgeText}>{index + 1}</Text>
-                    </View>
-
-                    <Text style={styles.cardTitle}>{item.name}</Text>
-                  </View>
-
-                  <Pressable
-                    onPress={async () => {
-                      await stopAllAudio();
-                      await openMaps(item);
-                    }}
-                    style={styles.mapBtn}
-                  >
-                    <Text style={styles.mapBtnText}>🗺️</Text>
-                  </Pressable>
-                </View>
-
-                <Text style={styles.cardText}>
-                  {item.district ? item.district : "—"}
-                  {item.city ? `, ${item.city}` : ""}
-                  {distanceLine}
-                </Text>
-
-                {item.phone ? <Text style={styles.cardSub}>📞 {item.phone}</Text> : null}
-
-                {item.phone ? (
-                  <Pressable
-                    onPress={async () => {
-                      await stopAllAudio();
-                      callPhone(item.phone);
-                    }}
-                    style={styles.callBtn}
-                  >
-                    <Text style={styles.callText}>Appeler</Text>
-                  </Pressable>
-                ) : (
-                  <Text style={styles.cardMuted}>Téléphone indisponible</Text>
-                )}
-              </Pressable>
-            );
-          }}
-          ListEmptyComponent={<Text style={styles.loading}>Aucun résultat.</Text>}
+          contentContainerStyle={styles.listContent}
+          renderItem={renderItem}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={styles.feedbackBox}>
+              <Text style={styles.loading}>Aucun résultat.</Text>
+            </View>
+          }
         />
       ) : null}
     </View>
@@ -832,76 +946,204 @@ export default function ResultsScreen({ navigation, route }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#000", paddingTop: 54, paddingHorizontal: 16 },
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.bg,
+    paddingTop: 54,
+    paddingHorizontal: 16,
+  },
 
-  header: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 10 },
+  bgOrbTop: {
+    position: "absolute",
+    top: -70,
+    right: -35,
+    width: 220,
+    height: 220,
+    borderRadius: 999,
+    backgroundColor: "rgba(99,164,255,0.08)",
+  },
+
+  bgOrbBottom: {
+    position: "absolute",
+    bottom: 40,
+    left: -60,
+    width: 240,
+    height: 240,
+    borderRadius: 999,
+    backgroundColor: "rgba(83,229,167,0.06)",
+  },
+
+  header: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    marginBottom: 12,
+  },
+
+  headerTextWrap: {
+    flex: 1,
+    paddingTop: 2,
+  },
 
   backBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: "#111",
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: COLORS.surface,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#222",
+    borderColor: COLORS.line,
   },
-  backText: { color: "#fff", fontSize: 20 },
 
-  title: { color: "#fff", fontSize: 18, fontWeight: "800" },
-  subtitle: { color: "#aaa", marginTop: 2 },
-  query: { color: "#666", marginTop: 6, fontSize: 12 },
+  backText: {
+    color: COLORS.text,
+    fontSize: 20,
+    fontWeight: "700",
+  },
+
+  title: {
+    color: COLORS.text,
+    fontSize: 21,
+    fontWeight: "900",
+  },
+
+  subtitle: {
+    color: COLORS.textSoft,
+    marginTop: 3,
+    fontSize: 13,
+  },
+
+  query: {
+    color: COLORS.textMuted,
+    marginTop: 6,
+    fontSize: 12,
+  },
 
   micMini: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: "#111",
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: COLORS.surface,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#222",
+    borderColor: COLORS.line,
   },
-  micMiniText: { color: "#fff", fontSize: 18 },
 
-  status: { color: "#bbb", textAlign: "center", marginTop: 6 },
+  micMiniActive: {
+    borderColor: "rgba(83,229,167,0.45)",
+  },
+
+  micMiniText: {
+    color: COLORS.text,
+    fontSize: 18,
+  },
+
+  statusCard: {
+    backgroundColor: COLORS.infoBg,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(99,164,255,0.14)",
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    marginBottom: 12,
+  },
+
+  status: {
+    color: COLORS.text,
+    textAlign: "center",
+    fontWeight: "700",
+  },
 
   geoBox: {
-    marginTop: 8,
-    padding: 12,
-    borderRadius: 12,
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: "#222",
-    backgroundColor: "#0b0b0b",
-  },
-  geoText: { color: "#bbb", fontSize: 13, marginBottom: 10 },
-  geoBtn: {
-    backgroundColor: "#111",
-    borderColor: "#333",
-    borderWidth: 1,
-    paddingVertical: 10,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  geoBtnText: { color: "#fff", fontWeight: "700" },
-
-  loading: { color: "#bbb", marginTop: 18, textAlign: "center" },
-  error: { color: "#ff8a8a", marginTop: 12, textAlign: "center" },
-
-  card: {
-    backgroundColor: "#0b0b0b",
-    borderColor: "#222",
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: 14,
+    borderColor: COLORS.line,
+    padding: 16,
     marginBottom: 14,
   },
+
+  geoTextWrap: {
+    marginBottom: 12,
+  },
+
+  geoTitle: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: "800",
+    marginBottom: 6,
+  },
+
+  geoText: {
+    color: COLORS.textSoft,
+    fontSize: 13,
+    lineHeight: 20,
+  },
+
+  geoBtn: {
+    backgroundColor: COLORS.accent,
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+
+  geoBtnText: {
+    color: "#04120B",
+    fontWeight: "900",
+    fontSize: 14,
+  },
+
+  feedbackBox: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    padding: 18,
+    marginTop: 6,
+  },
+
+  loading: {
+    color: COLORS.textSoft,
+    textAlign: "center",
+  },
+
+  errorBox: {
+    backgroundColor: "rgba(255,122,122,0.08)",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,122,122,0.14)",
+    padding: 16,
+    marginTop: 6,
+  },
+
+  error: {
+    color: COLORS.danger,
+    textAlign: "center",
+  },
+
+  listContent: {
+    paddingTop: 2,
+    paddingBottom: 30,
+  },
+
+  card: {
+    backgroundColor: COLORS.surface,
+    borderColor: COLORS.line,
+    borderWidth: 1,
+    borderRadius: 22,
+    padding: 16,
+    marginBottom: 14,
+  },
+
   cardTopRow: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 12,
   },
+
   titleWrap: {
     flex: 1,
     flexDirection: "row",
@@ -909,56 +1151,151 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingRight: 8,
   },
+
+  titleTextWrap: {
+    flex: 1,
+  },
+
   indexBadge: {
-    minWidth: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "#151515",
+    minWidth: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "rgba(99,164,255,0.12)",
     borderWidth: 1,
-    borderColor: "#333",
+    borderColor: "rgba(99,164,255,0.18)",
     alignItems: "center",
     justifyContent: "center",
     marginTop: 1,
   },
+
   indexBadgeText: {
-    color: "#fff",
+    color: COLORS.text,
     fontSize: 13,
-    fontWeight: "800",
+    fontWeight: "900",
   },
+
   cardTitle: {
-    color: "#fff",
+    color: COLORS.text,
     fontSize: 16,
-    fontWeight: "700",
-    flex: 1,
+    fontWeight: "800",
     lineHeight: 22,
+    marginBottom: 4,
   },
+
+  cardMeta: {
+    color: COLORS.textSoft,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+
   mapBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: "#111",
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: COLORS.surface2,
     borderWidth: 1,
-    borderColor: "#333",
+    borderColor: COLORS.line,
     alignItems: "center",
     justifyContent: "center",
   },
+
   mapBtnText: {
     fontSize: 18,
-    color: "#fff",
+    color: COLORS.text,
   },
 
-  cardText: { color: "#bbb", marginTop: 10, lineHeight: 20 },
-  cardSub: { color: "#888", marginTop: 8, fontSize: 13 },
-  cardMuted: { color: "#666", marginTop: 12 },
+  infoRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 12,
+  },
+
+  infoPill: {
+    backgroundColor: COLORS.infoBg,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: "rgba(99,164,255,0.14)",
+  },
+
+  infoPillText: {
+    color: COLORS.text,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+
+  infoPillMuted: {
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+  },
+
+  infoPillMutedText: {
+    color: COLORS.textSoft,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+
+  cardSub: {
+    color: COLORS.textSoft,
+    marginTop: 12,
+    fontSize: 14,
+  },
+
+  actionRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 14,
+  },
 
   callBtn: {
-    marginTop: 12,
-    backgroundColor: "#111",
-    borderColor: "#333",
-    borderWidth: 1,
-    paddingVertical: 10,
-    borderRadius: 12,
+    flex: 1,
+    backgroundColor: COLORS.accent,
+    borderRadius: 14,
+    paddingVertical: 12,
     alignItems: "center",
   },
-  callText: { color: "#fff", fontWeight: "700" },
+
+  callText: {
+    color: "#04120B",
+    fontWeight: "900",
+    fontSize: 14,
+  },
+
+  callBtnDisabled: {
+    flex: 1,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: COLORS.line,
+  },
+
+  callTextDisabled: {
+    color: COLORS.textMuted,
+    fontWeight: "700",
+    fontSize: 13,
+  },
+
+  routeBtn: {
+    flex: 1,
+    backgroundColor: COLORS.surface2,
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: COLORS.line,
+  },
+
+  routeBtnText: {
+    color: COLORS.text,
+    fontWeight: "800",
+    fontSize: 14,
+  },
 });
