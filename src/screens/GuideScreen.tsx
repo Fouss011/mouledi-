@@ -1,5 +1,13 @@
 import React from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  ScrollView,
+  ImageBackground,
+  SafeAreaView,
+} from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../../App";
 import { ADMIN_GUIDES, GuideLanguage } from "../data/adminGuides";
@@ -9,18 +17,20 @@ type Props = NativeStackScreenProps<RootStackParamList, "Guide">;
 type GuideKey = "passport" | "cni" | "casier";
 
 const COLORS = {
-  bg: "#020B1F",
-  surface: "#07162D",
-  surface2: "#0B1D36",
-  surface3: "#102542",
-  line: "rgba(255,255,255,0.08)",
-  lineStrong: "rgba(255,255,255,0.14)",
-  text: "#FFFFFF",
-  textSoft: "rgba(255,255,255,0.72)",
-  textMuted: "rgba(255,255,255,0.48)",
-  accent: "#14F1D9",
-  accent2: "#0EA5E9",
-  accent3: "#8B7CFF",
+  bg: "#F5EFE4",
+  overlay: "rgba(245,239,228,0.88)",
+  surface: "rgba(255,251,245,0.94)",
+  surfaceSoft: "rgba(255,248,239,0.90)",
+  border: "rgba(110,78,42,0.12)",
+  borderStrong: "rgba(110,78,42,0.20)",
+  text: "#2E2418",
+  textSoft: "#5E4B38",
+  textMuted: "#8A7561",
+  accent: "#A85C2C",
+  accentSoft: "#E8D2BF",
+  badgeBg: "#F1E0CF",
+  noteBg: "#F6E8D8",
+  shadow: "rgba(63, 37, 14, 0.08)",
 };
 
 export default function GuideScreen({ navigation, route }: Props) {
@@ -41,122 +51,119 @@ export default function GuideScreen({ navigation, route }: Props) {
     ADMIN_GUIDES.fr.passport;
 
   return (
-    <View style={styles.container}>
-      <View style={styles.bgOrbTop} />
-      <View style={styles.bgOrbBottom} />
+    <ImageBackground
+      source={require("../assets/mouledi-bg.png")}
+      style={styles.background}
+      resizeMode="cover"
+    >
+      <View style={styles.overlay} />
 
-      <View style={styles.heroCard}>
-        <View style={styles.heroTopRow}>
-          <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
-            <Text style={styles.backText}>←</Text>
-          </Pressable>
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.container}>
+          <View style={styles.headerCard}>
+            <View style={styles.headerTop}>
+              <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
+                <Text style={styles.backText}>←</Text>
+              </Pressable>
 
-          <View style={styles.heroTextBox}>
-            <Text style={styles.eyebrow}>Guide pratique</Text>
-            <Text style={styles.title}>{guide.title}</Text>
-            <Text style={styles.subtitle}>
-              Suis les étapes ci-dessous pour comprendre rapidement la procédure.
-            </Text>
+              <View style={styles.headerTextBlock}>
+                <Text style={styles.kicker}>Guide</Text>
+                <Text style={styles.title}>{guide.title}</Text>
+                <Text style={styles.subtitle}>
+                  Lis les étapes une par une, simplement.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.langPill}>
+              <Text style={styles.langPillText}>
+                {lang === "fr" ? "Français" : lang === "mina" ? "Mina" : "Kabyè"}
+              </Text>
+            </View>
           </View>
-        </View>
 
-        <View style={styles.langPill}>
-          <Text style={styles.langPillText}>
-            {lang === "fr" ? "FRANÇAIS" : lang === "mina" ? "MINA" : "KABYÈ"}
-          </Text>
-        </View>
-      </View>
+          <ScrollView
+            contentContainerStyle={styles.content}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.mainCard}>
+              {guide.steps.map((step, idx) => (
+                <View key={`${guideKey}-${idx}`} style={styles.stepRow}>
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{idx + 1}</Text>
+                  </View>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.card}>
-          <Text style={styles.intro}>
-            Ce guide te présente les étapes essentielles de manière simple, claire et lisible.
-          </Text>
+                  <View style={styles.stepCard}>
+                    <Text style={styles.stepTitle}>{step.title}</Text>
+                    <Text style={styles.stepText}>{step.body}</Text>
+                  </View>
+                </View>
+              ))}
 
-          <View style={styles.divider} />
-
-          {guide.steps.map((step, idx) => (
-            <View key={`${guideKey}-${idx}`} style={styles.stepRow}>
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{idx + 1}</Text>
-              </View>
-
-              <View style={styles.stepContent}>
-                <Text style={styles.stepLabel}>{step.title}</Text>
-                <Text style={styles.stepText}>{step.body}</Text>
-              </View>
+              {guide.note ? (
+                <View style={styles.noteBox}>
+                  <Text style={styles.noteTitle}>À retenir</Text>
+                  <Text style={styles.noteText}>{guide.note}</Text>
+                </View>
+              ) : null}
             </View>
-          ))}
-
-          {guide.note ? (
-            <View style={styles.noteBox}>
-              <Text style={styles.noteTitle}>Note importante</Text>
-              <Text style={styles.note}>{guide.note}</Text>
-            </View>
-          ) : null}
+          </ScrollView>
         </View>
-      </ScrollView>
-    </View>
+      </SafeAreaView>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  background: {
     flex: 1,
     backgroundColor: COLORS.bg,
-    paddingTop: 58,
+  },
+
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: COLORS.overlay,
+  },
+
+  safeArea: {
+    flex: 1,
+  },
+
+  container: {
+    flex: 1,
     paddingHorizontal: 18,
-    overflow: "hidden",
+    paddingTop: 10,
   },
 
-  bgOrbTop: {
-    position: "absolute",
-    top: -100,
-    right: -60,
-    width: 260,
-    height: 260,
-    borderRadius: 999,
-    backgroundColor: "rgba(14,165,233,0.08)",
-  },
-
-  bgOrbBottom: {
-    position: "absolute",
-    bottom: -40,
-    left: -80,
-    width: 240,
-    height: 240,
-    borderRadius: 999,
-    backgroundColor: "rgba(20,241,217,0.06)",
-  },
-
-  heroCard: {
+  headerCard: {
     backgroundColor: COLORS.surface,
-    borderRadius: 30,
+    borderRadius: 26,
     borderWidth: 1,
-    borderColor: COLORS.line,
+    borderColor: COLORS.border,
     padding: 18,
-    marginBottom: 18,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
   },
 
-  heroTopRow: {
+  headerTop: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 14,
-  },
-
-  heroTextBox: {
-    flex: 1,
   },
 
   backBtn: {
-    width: 50,
-    height: 50,
-    borderRadius: 18,
-    backgroundColor: COLORS.surface2,
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: COLORS.surfaceSoft,
     borderWidth: 1,
-    borderColor: COLORS.line,
+    borderColor: COLORS.border,
     alignItems: "center",
     justifyContent: "center",
+    marginRight: 12,
   },
 
   backText: {
@@ -165,88 +172,83 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
 
-  eyebrow: {
+  headerTextBlock: {
+    flex: 1,
+  },
+
+  kicker: {
     color: COLORS.accent,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "800",
-    letterSpacing: 1.4,
+    marginBottom: 4,
     textTransform: "uppercase",
-    marginBottom: 6,
+    letterSpacing: 0.8,
   },
 
   title: {
     color: COLORS.text,
     fontSize: 24,
     fontWeight: "900",
-    lineHeight: 31,
+    lineHeight: 30,
     marginBottom: 6,
   },
 
   subtitle: {
     color: COLORS.textSoft,
     fontSize: 14,
-    lineHeight: 21,
+    lineHeight: 20,
   },
 
   langPill: {
-    marginTop: 18,
+    marginTop: 14,
     alignSelf: "flex-start",
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: COLORS.accentSoft,
     borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 7,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
 
   langPillText: {
-    color: COLORS.text,
+    color: COLORS.accent,
     fontSize: 12,
     fontWeight: "800",
-    letterSpacing: 0.8,
   },
 
   content: {
-    paddingBottom: 40,
+    paddingBottom: 30,
   },
 
-  card: {
+  mainCard: {
     backgroundColor: COLORS.surface,
-    borderRadius: 28,
+    borderRadius: 26,
     borderWidth: 1,
-    borderColor: COLORS.line,
-    padding: 20,
-  },
-
-  intro: {
-    color: COLORS.textSoft,
-    fontSize: 15,
-    lineHeight: 24,
-    marginBottom: 18,
-  },
-
-  divider: {
-    height: 1,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    marginBottom: 22,
+    borderColor: COLORS.border,
+    padding: 18,
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 2,
   },
 
   stepRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 14,
-    marginBottom: 18,
+    marginBottom: 16,
   },
 
   badge: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: "rgba(20,241,217,0.12)",
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: COLORS.badgeBg,
     borderWidth: 1,
-    borderColor: "rgba(20,241,217,0.18)",
+    borderColor: COLORS.borderStrong,
     alignItems: "center",
     justifyContent: "center",
+    marginRight: 12,
     marginTop: 2,
   },
 
@@ -256,49 +258,47 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
 
-  stepContent: {
+  stepCard: {
     flex: 1,
-    backgroundColor: COLORS.surface2,
-    borderRadius: 22,
+    backgroundColor: COLORS.surfaceSoft,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: COLORS.line,
-    padding: 16,
+    borderColor: COLORS.border,
+    padding: 15,
   },
 
-  stepLabel: {
-    color: COLORS.accent2,
-    fontSize: 11,
+  stepTitle: {
+    color: COLORS.text,
+    fontSize: 15,
     fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    marginBottom: 8,
+    marginBottom: 6,
   },
 
   stepText: {
     color: COLORS.textSoft,
     fontSize: 14,
-    lineHeight: 23,
+    lineHeight: 22,
   },
 
   noteBox: {
-    marginTop: 8,
-    backgroundColor: "rgba(20,241,217,0.08)",
-    borderRadius: 22,
+    marginTop: 6,
+    backgroundColor: COLORS.noteBg,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: "rgba(20,241,217,0.14)",
-    padding: 16,
+    borderColor: COLORS.border,
+    padding: 15,
   },
 
   noteTitle: {
     color: COLORS.accent,
     fontSize: 13,
     fontWeight: "800",
-    marginBottom: 8,
+    marginBottom: 6,
     textTransform: "uppercase",
-    letterSpacing: 1,
+    letterSpacing: 0.6,
   },
 
-  note: {
+  noteText: {
     color: COLORS.textSoft,
     fontSize: 14,
     lineHeight: 22,
