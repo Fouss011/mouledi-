@@ -8,6 +8,21 @@ type Props = NativeStackScreenProps<RootStackParamList, "Guide">;
 
 type GuideKey = "passport" | "cni" | "casier";
 
+const COLORS = {
+  bg: "#020B1F",
+  surface: "#07162D",
+  surface2: "#0B1D36",
+  surface3: "#102542",
+  line: "rgba(255,255,255,0.08)",
+  lineStrong: "rgba(255,255,255,0.14)",
+  text: "#FFFFFF",
+  textSoft: "rgba(255,255,255,0.72)",
+  textMuted: "rgba(255,255,255,0.48)",
+  accent: "#14F1D9",
+  accent2: "#0EA5E9",
+  accent3: "#8B7CFF",
+};
+
 export default function GuideScreen({ navigation, route }: Props) {
   const rawGuideKey = route.params?.guideKey;
   const rawLang = route.params?.lang;
@@ -30,21 +45,32 @@ export default function GuideScreen({ navigation, route }: Props) {
       <View style={styles.bgOrbTop} />
       <View style={styles.bgOrbBottom} />
 
-      <View style={styles.header}>
-        <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={styles.backText}>←</Text>
-        </Pressable>
+      <View style={styles.heroCard}>
+        <View style={styles.heroTopRow}>
+          <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <Text style={styles.backText}>←</Text>
+          </Pressable>
 
-        <View style={styles.headerTextBox}>
-          <Text style={styles.eyebrow}>Guide pratique</Text>
-          <Text style={styles.title}>{guide.title}</Text>
+          <View style={styles.heroTextBox}>
+            <Text style={styles.eyebrow}>Guide pratique</Text>
+            <Text style={styles.title}>{guide.title}</Text>
+            <Text style={styles.subtitle}>
+              Suis les étapes ci-dessous pour comprendre rapidement la procédure.
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.langPill}>
+          <Text style={styles.langPillText}>
+            {lang === "fr" ? "FRANÇAIS" : lang === "mina" ? "MINA" : "KABYÈ"}
+          </Text>
         </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.card}>
           <Text style={styles.intro}>
-            Suis les étapes ci-dessous pour comprendre rapidement la procédure.
+            Ce guide te présente les étapes essentielles de manière simple, claire et lisible.
           </Text>
 
           <View style={styles.divider} />
@@ -64,7 +90,7 @@ export default function GuideScreen({ navigation, route }: Props) {
 
           {guide.note ? (
             <View style={styles.noteBox}>
-              <Text style={styles.noteTitle}>Note</Text>
+              <Text style={styles.noteTitle}>Note importante</Text>
               <Text style={styles.note}>{guide.note}</Text>
             </View>
           ) : null}
@@ -74,181 +100,207 @@ export default function GuideScreen({ navigation, route }: Props) {
   );
 }
 
-const COLORS = {
-  bg: "#050816",
-  surface: "#0D1324",
-  surface2: "#121A2D",
-  line: "rgba(255,255,255,0.08)",
-  lineStrong: "rgba(255,255,255,0.14)",
-  text: "#F5F7FB",
-  textSoft: "#AAB3C5",
-  textMuted: "#7E879A",
-  accent: "#53E5A7",
-  accent2: "#63A4FF",
-};
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.bg,
-    paddingTop: 54,
-    paddingHorizontal: 16,
+    paddingTop: 58,
+    paddingHorizontal: 18,
     overflow: "hidden",
   },
 
   bgOrbTop: {
     position: "absolute",
-    top: -80,
-    right: -40,
-    width: 220,
-    height: 220,
+    top: -100,
+    right: -60,
+    width: 260,
+    height: 260,
     borderRadius: 999,
-    backgroundColor: "rgba(99,164,255,0.08)",
+    backgroundColor: "rgba(14,165,233,0.08)",
   },
 
   bgOrbBottom: {
     position: "absolute",
-    bottom: 40,
-    left: -60,
-    width: 220,
-    height: 220,
+    bottom: -40,
+    left: -80,
+    width: 240,
+    height: 240,
     borderRadius: 999,
-    backgroundColor: "rgba(83,229,167,0.06)",
+    backgroundColor: "rgba(20,241,217,0.06)",
   },
 
-  header: {
+  heroCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 30,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    padding: 18,
+    marginBottom: 18,
+  },
+
+  heroTopRow: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 16,
+    alignItems: "flex-start",
+    gap: 14,
+  },
+
+  heroTextBox: {
+    flex: 1,
   },
 
   backBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: COLORS.surface,
-    alignItems: "center",
-    justifyContent: "center",
+    width: 50,
+    height: 50,
+    borderRadius: 18,
+    backgroundColor: COLORS.surface2,
     borderWidth: 1,
     borderColor: COLORS.line,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   backText: {
     color: COLORS.text,
-    fontSize: 21,
-    fontWeight: "700",
-  },
-
-  headerTextBox: {
-    flex: 1,
+    fontSize: 22,
+    fontWeight: "800",
   },
 
   eyebrow: {
     color: COLORS.accent,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "800",
-    letterSpacing: 1,
+    letterSpacing: 1.4,
     textTransform: "uppercase",
-    marginBottom: 4,
+    marginBottom: 6,
   },
 
   title: {
     color: COLORS.text,
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "900",
-    flexShrink: 1,
+    lineHeight: 31,
+    marginBottom: 6,
+  },
+
+  subtitle: {
+    color: COLORS.textSoft,
+    fontSize: 14,
+    lineHeight: 21,
+  },
+
+  langPill: {
+    marginTop: 18,
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+
+  langPillText: {
+    color: COLORS.text,
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.8,
   },
 
   content: {
-    paddingBottom: 32,
+    paddingBottom: 40,
   },
 
   card: {
     backgroundColor: COLORS.surface,
-    borderColor: COLORS.line,
+    borderRadius: 28,
     borderWidth: 1,
-    borderRadius: 24,
-    padding: 18,
+    borderColor: COLORS.line,
+    padding: 20,
   },
 
   intro: {
-    color: COLORS.text,
+    color: COLORS.textSoft,
     fontSize: 15,
     lineHeight: 24,
+    marginBottom: 18,
   },
 
   divider: {
     height: 1,
-    backgroundColor: COLORS.line,
-    marginVertical: 16,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    marginBottom: 22,
   },
 
   stepRow: {
     flexDirection: "row",
-    gap: 12,
-    marginBottom: 16,
     alignItems: "flex-start",
+    gap: 14,
+    marginBottom: 18,
   },
 
   badge: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: "rgba(99,164,255,0.12)",
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "rgba(20,241,217,0.12)",
     borderWidth: 1,
-    borderColor: "rgba(99,164,255,0.18)",
+    borderColor: "rgba(20,241,217,0.18)",
     alignItems: "center",
     justifyContent: "center",
     marginTop: 2,
   },
 
   badgeText: {
-    color: COLORS.text,
+    color: COLORS.accent,
+    fontSize: 14,
     fontWeight: "900",
-    fontSize: 13,
   },
 
   stepContent: {
     flex: 1,
     backgroundColor: COLORS.surface2,
-    borderRadius: 18,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: COLORS.line,
-    padding: 14,
+    padding: 16,
   },
 
   stepLabel: {
     color: COLORS.accent2,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "800",
-    marginBottom: 6,
     textTransform: "uppercase",
+    letterSpacing: 1,
+    marginBottom: 8,
   },
 
   stepText: {
     color: COLORS.textSoft,
-    lineHeight: 22,
     fontSize: 14,
+    lineHeight: 23,
   },
 
   noteBox: {
     marginTop: 8,
-    backgroundColor: "rgba(83,229,167,0.08)",
+    backgroundColor: "rgba(20,241,217,0.08)",
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: "rgba(83,229,167,0.14)",
-    borderRadius: 18,
-    padding: 14,
+    borderColor: "rgba(20,241,217,0.14)",
+    padding: 16,
   },
 
   noteTitle: {
     color: COLORS.accent,
+    fontSize: 13,
     fontWeight: "800",
-    marginBottom: 6,
+    marginBottom: 8,
+    textTransform: "uppercase",
+    letterSpacing: 1,
   },
 
   note: {
     color: COLORS.textSoft,
-    lineHeight: 21,
+    fontSize: 14,
+    lineHeight: 22,
   },
 });

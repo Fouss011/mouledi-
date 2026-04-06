@@ -120,7 +120,6 @@ async function getNearCoordsSafe(
   if (Platform.OS === "web" && typeof window !== "undefined" && typeof navigator !== "undefined") {
     const nav = navigator as any;
 
-    // Sur Safari iPhone, la géoloc ne marche que dans un contexte sécurisé (HTTPS)
     if (!window.isSecureContext) {
       console.log("Geolocation unavailable: insecure context");
       return { nearLat: null, nearLng: null };
@@ -164,7 +163,6 @@ async function getNearCoordsSafe(
         );
       });
 
-    // 1) tentative légère, souvent plus fiable sur Safari
     const quick = await getPosition({
       enableHighAccuracy: false,
       timeout: Math.min(timeoutMs, 6000),
@@ -175,7 +173,6 @@ async function getNearCoordsSafe(
       return quick;
     }
 
-    // 2) fallback plus précis si la première tentative échoue
     const precise = await getPosition({
       enableHighAccuracy: true,
       timeout: timeoutMs,
@@ -291,20 +288,23 @@ function getStatusLabel(statusText: string, isListening: boolean) {
 }
 
 const COLORS = {
-  bg: "#050816",
-  surface: "#0D1324",
-  surface2: "#121A2D",
-  surface3: "#0B1020",
+  bg: "#04101F",
+  bg2: "#07162B",
+  surface: "#08182D",
+  surface2: "#0B203A",
+  surface3: "#0D2441",
+  surfaceSoft: "rgba(255,255,255,0.03)",
   line: "rgba(255,255,255,0.08)",
   lineStrong: "rgba(255,255,255,0.14)",
-  text: "#F5F7FB",
-  textSoft: "#AAB3C5",
-  textMuted: "#7E879A",
-  accent: "#53E5A7",
-  accent2: "#63A4FF",
-  accent3: "#8B7CFF",
-  danger: "#FF7A7A",
-  infoBg: "rgba(99,164,255,0.10)",
+  text: "#F8FBFF",
+  textSoft: "rgba(255,255,255,0.76)",
+  textMuted: "rgba(255,255,255,0.52)",
+  accent: "#19E3C6",
+  accent2: "#3DA4FF",
+  accent3: "#7B8CFF",
+  successSoft: "rgba(25,227,198,0.12)",
+  infoBg: "rgba(61,164,255,0.12)",
+  darkPill: "rgba(9,26,46,0.95)",
 };
 
 export default function HomeScreen({ navigation, route }: Props) {
@@ -377,7 +377,7 @@ export default function HomeScreen({ navigation, route }: Props) {
         Animated.parallel([
           Animated.sequence([
             Animated.timing(pulse, {
-              toValue: 1.06,
+              toValue: 1.04,
               duration: 900,
               easing: Easing.inOut(Easing.ease),
               useNativeDriver: true,
@@ -855,22 +855,25 @@ export default function HomeScreen({ navigation, route }: Props) {
   if (showLangPicker) {
     return (
       <View style={styles.container}>
-        <View style={styles.bgOrbTop} />
-        <View style={styles.bgOrbBottom} />
+        <View style={styles.bgGlowTop} />
+        <View style={styles.bgGlowRight} />
+        <View style={styles.bgGlowBottom} />
 
-        <View style={styles.headerBlock}>
+        <View style={styles.langHeader}>
           <Pressable onPress={handleTitlePress}>
-            <Text style={styles.title}>MOULÉDI</Text>
+            <Text style={styles.brandTitle}>MOULÉDI</Text>
           </Pressable>
-          <Text style={styles.heroSubtitle}>Choisis ta langue</Text>
-          <Text style={styles.heroDescription}>
-            Une interface vocale simple, élégante et accessible pour agir rapidement.
+          <Text style={styles.langHeading}>Choisis ta langue</Text>
+          <Text style={styles.langLead}>
+            Une expérience vocale simple, élégante et accessible pour trouver vite le bon service.
           </Text>
         </View>
 
         <View style={styles.langGrid}>
           <Pressable style={styles.langCard} onPress={() => chooseLanguage("mina")}>
-            <Text style={styles.langEmoji}>🗣️</Text>
+            <View style={styles.langIconBox}>
+              <Text style={styles.langEmoji}>🗣️</Text>
+            </View>
             <View style={styles.langTextBox}>
               <Text style={styles.langTitle}>Mina</Text>
               <Text style={styles.langDesc}>Expérience vocale en mina</Text>
@@ -878,7 +881,9 @@ export default function HomeScreen({ navigation, route }: Props) {
           </Pressable>
 
           <Pressable style={styles.langCard} onPress={() => chooseLanguage("kabyè")}>
-            <Text style={styles.langEmoji}>🗣️</Text>
+            <View style={styles.langIconBox}>
+              <Text style={styles.langEmoji}>🗣️</Text>
+            </View>
             <View style={styles.langTextBox}>
               <Text style={styles.langTitle}>Kabyè</Text>
               <Text style={styles.langDesc}>Navigation et guides en kabyè</Text>
@@ -886,7 +891,9 @@ export default function HomeScreen({ navigation, route }: Props) {
           </Pressable>
 
           <Pressable style={styles.langCard} onPress={() => chooseLanguage("fr")}>
-            <Text style={styles.langEmoji}>🇫🇷</Text>
+            <View style={styles.langIconBox}>
+              <Text style={styles.langEmoji}>🇫🇷</Text>
+            </View>
             <View style={styles.langTextBox}>
               <Text style={styles.langTitle}>Français</Text>
               <Text style={styles.langDesc}>Mode standard en français</Text>
@@ -894,7 +901,9 @@ export default function HomeScreen({ navigation, route }: Props) {
           </Pressable>
 
           <Pressable style={styles.langCard} onPress={() => chooseLanguage("mute")}>
-            <Text style={styles.langEmoji}>🔇</Text>
+            <View style={styles.langIconBox}>
+              <Text style={styles.langEmoji}>🔇</Text>
+            </View>
             <View style={styles.langTextBox}>
               <Text style={styles.langTitle}>Mode muet</Text>
               <Text style={styles.langDesc}>Sans lecture audio</Text>
@@ -919,19 +928,20 @@ export default function HomeScreen({ navigation, route }: Props) {
 
   return (
     <View style={styles.container}>
-      <View style={styles.bgOrbTop} />
-      <View style={styles.bgOrbBottom} />
+      <View style={styles.bgGlowTop} />
+      <View style={styles.bgGlowRight} />
+      <View style={styles.bgGlowBottom} />
 
       <View style={styles.stickyHeader}>
         <View style={styles.topBar}>
           <View style={styles.brandBlock}>
             <Pressable onPress={handleTitlePress}>
-              <Text style={styles.title}>MOULÉDI</Text>
+              <Text style={styles.brandTitle}>MOULÉDI</Text>
             </Pressable>
-            <Text style={styles.subtitle}>Parler. Comprendre. Trouver.</Text>
+            <Text style={styles.brandSubtitle}>Parler. Comprendre. Trouver rapidement.</Text>
           </View>
 
-          <View style={styles.langPill}>
+          <Pressable style={styles.langPill} onPress={() => setShowLangPicker(true)}>
             <Text style={styles.langPillText}>
               {selectedLang === "mute"
                 ? "MUET"
@@ -941,7 +951,7 @@ export default function HomeScreen({ navigation, route }: Props) {
                 ? "MINA"
                 : "KABYÈ"}
             </Text>
-          </View>
+          </Pressable>
         </View>
       </View>
 
@@ -953,76 +963,159 @@ export default function HomeScreen({ navigation, route }: Props) {
         alwaysBounceVertical={false}
       >
         <View style={styles.heroCard}>
-          <View style={styles.heroTopRow}>
+          <View style={styles.heroMetaRow}>
             <View style={styles.heroBadge}>
-              <Text style={styles.heroBadgeText}>VOICE AI</Text>
+              <Text style={styles.heroBadgeText}>SERVICE VOCAL</Text>
             </View>
           </View>
 
-          <Text style={styles.heroTitle}>Une recherche vocale qui agit vite</Text>
-          <Text style={styles.heroDescription}>
-            Appuie sur le micro, parle naturellement, puis laisse Moulédi comprendre et t’orienter.
+          <Text style={styles.heroTitle}>
+            Trouve rapidement une pharmacie, une clinique ou un service utile près de toi.
           </Text>
 
-          <View style={styles.voiceStateCard}>
-            <Text style={styles.voiceStateLabel}>{statusLabel}</Text>
-            <Text style={styles.voiceStateHint}>
-              {isListening
-                ? "Parle puis appuie de nouveau pour valider."
-                : "Exemple : “Moulédji pharmacie”"}
-            </Text>
-          </View>
+          <Text style={styles.heroDescription}>
+            Parle naturellement à Moulédi. L’application comprend ta demande et t’oriente
+            immédiatement.
+          </Text>
 
-          <View style={styles.micWrap}>
-            <Animated.View
-              style={[
-                styles.outerHalo,
-                {
-                  transform: [{ scale: pulse }],
-                  opacity: halo,
-                },
-              ]}
-            />
-            <Animated.View
-              style={[
-                styles.middleHalo,
-                {
-                  transform: [{ scale: pulse }],
-                  opacity: glow,
-                },
-              ]}
-            />
-
-            <Pressable onPress={onPressMic} style={styles.micPressable}>
+          <View style={styles.commandBar}>
+            <Pressable onPress={onPressMic} style={styles.commandMicSide}>
               <Animated.View
                 style={[
-                  styles.micButton,
-                  isListening ? styles.micActive : null,
+                  styles.commandMicButton,
+                  isListening ? styles.commandMicButtonActive : null,
                   { transform: [{ scale: pulse }] },
                 ]}
               >
-                <Text style={styles.micText}>{isListening ? "⏹️" : "🎙️"}</Text>
+                <Text style={styles.commandMicIcon}>{isListening ? "⏹️" : "🎙️"}</Text>
               </Animated.View>
+
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  styles.commandMicHaloOuter,
+                  {
+                    opacity: halo,
+                    transform: [{ scale: pulse }],
+                  },
+                ]}
+              />
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  styles.commandMicHaloInner,
+                  {
+                    opacity: glow,
+                    transform: [{ scale: pulse }],
+                  },
+                ]}
+              />
+            </Pressable>
+
+            <View style={styles.commandCenter}>
+              <Text style={styles.commandState}>{statusLabel}</Text>
+              <Text style={styles.commandHint}>
+                {isListening
+                  ? "Parle puis appuie de nouveau pour valider."
+                  : "Exemple : “Moulédji pharmacie”"}
+              </Text>
+            </View>
+
+            <Pressable onPress={onPressMic} style={styles.commandAction}>
+              <Text style={styles.commandActionText}>{isListening ? "Stop" : "Parler"}</Text>
             </Pressable>
           </View>
 
-          <Text style={styles.hint}>
+          <Text style={styles.heroFootnote}>
             {isListening
-              ? "Enregistrement en cours… appuie sur STOP quand tu as fini."
+              ? "Enregistrement en cours… appuie sur Stop quand tu as fini."
               : "Appuie une fois pour parler, une deuxième fois pour envoyer."}
           </Text>
         </View>
 
-        <View style={styles.quickCard}>
-          <Text style={styles.sectionEyebrow}>Commandes rapides</Text>
-          <Text style={styles.sectionTitle}>Tu peux dire par exemple</Text>
+        <View style={styles.shortcutsCard}>
+          <Text style={styles.sectionEyebrow}>Raccourcis utiles</Text>
+          <Text style={styles.sectionTitle}>Tu peux demander directement</Text>
 
-          <View style={styles.exampleList}>
-            <Text style={styles.exampleItem}>• Moulédji pharmacie</Text>
-            <Text style={styles.exampleItem}>• Moulédji clinique</Text>
-            <Text style={styles.exampleItem}>• Moulédji restaurant</Text>
-            <Text style={styles.exampleItem}>• Moulédji passeport</Text>
-            <Text style={styles.exampleItem}>• Moulédji carte d’identité</Text>
+          <View style={styles.shortcutsGrid}>
+            <Pressable style={styles.shortcutCard} onPress={openPharmacies}>
+              <View style={styles.shortcutIconBox}>
+                <Text style={styles.shortcutIcon}>💊</Text>
+              </View>
+              <Text style={styles.shortcutTitle}>Pharmacie</Text>
+              <Text style={styles.shortcutDesc}>Trouver une pharmacie proche de toi.</Text>
+            </Pressable>
+
+            <Pressable style={styles.shortcutCard} onPress={openClinics}>
+              <View style={styles.shortcutIconBox}>
+                <Text style={styles.shortcutIcon}>🏥</Text>
+              </View>
+              <Text style={styles.shortcutTitle}>Clinique</Text>
+              <Text style={styles.shortcutDesc}>Chercher un centre de santé rapidement.</Text>
+            </Pressable>
+
+            <Pressable style={styles.shortcutCard} onPress={openRestaurants}>
+              <View style={styles.shortcutIconBox}>
+                <Text style={styles.shortcutIcon}>🍽️</Text>
+              </View>
+              <Text style={styles.shortcutTitle}>Restaurant</Text>
+              <Text style={styles.shortcutDesc}>Voir les adresses autour de toi.</Text>
+            </Pressable>
+
+            <View style={styles.shortcutCardStatic}>
+              <View style={styles.shortcutIconBox}>
+                <Text style={styles.shortcutIcon}>🛂</Text>
+              </View>
+              <Text style={styles.shortcutTitle}>Passeport</Text>
+              <Text style={styles.shortcutDesc}>Demande vocale possible via le micro.</Text>
+            </View>
+
+            <View style={styles.shortcutCardStatic}>
+              <View style={styles.shortcutIconBox}>
+                <Text style={styles.shortcutIcon}>🪪</Text>
+              </View>
+              <Text style={styles.shortcutTitle}>Carte d’identité</Text>
+              <Text style={styles.shortcutDesc}>Guide vocal et orientation rapide.</Text>
+            </View>
+
+            <View style={styles.shortcutCardStatic}>
+              <View style={styles.shortcutIconBox}>
+                <Text style={styles.shortcutIcon}>⚡</Text>
+              </View>
+              <Text style={styles.shortcutTitle}>Réponse rapide</Text>
+              <Text style={styles.shortcutDesc}>Un accès simple, direct et utile.</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.howCard}>
+          <Text style={styles.sectionEyebrow}>Comment ça marche</Text>
+          <Text style={styles.sectionTitle}>Simple en trois étapes</Text>
+
+          <View style={styles.stepsRow}>
+            <View style={styles.stepCard}>
+              <View style={styles.stepBadge}>
+                <Text style={styles.stepBadgeText}>1</Text>
+              </View>
+              <Text style={styles.stepTitle}>Tu parles</Text>
+              <Text style={styles.stepDesc}>Exprime naturellement ce que tu cherches.</Text>
+            </View>
+
+            <View style={styles.stepCard}>
+              <View style={styles.stepBadge}>
+                <Text style={styles.stepBadgeText}>2</Text>
+              </View>
+              <Text style={styles.stepTitle}>Moulédi comprend</Text>
+              <Text style={styles.stepDesc}>La demande est analysée puis orientée.</Text>
+            </View>
+
+            <View style={styles.stepCard}>
+              <View style={styles.stepBadge}>
+                <Text style={styles.stepBadgeText}>3</Text>
+              </View>
+              <Text style={styles.stepTitle}>Tu agis vite</Text>
+              <Text style={styles.stepDesc}>Tu reçois la bonne réponse ou le bon guide.</Text>
+            </View>
           </View>
         </View>
 
@@ -1075,6 +1168,28 @@ export default function HomeScreen({ navigation, route }: Props) {
           </View>
         ) : null}
 
+        <View style={styles.trustCard}>
+          <Text style={styles.sectionEyebrow}>Pourquoi Moulédi</Text>
+          <Text style={styles.sectionTitle}>Un service utile, clair et rapide</Text>
+
+          <Text style={styles.trustLead}>
+            Moulédi aide à trouver plus vite les services essentiels autour de toi, sans interface
+            compliquée.
+          </Text>
+
+          <View style={styles.trustBadgesRow}>
+            <View style={styles.trustBadge}>
+              <Text style={styles.trustBadgeText}>Rapide</Text>
+            </View>
+            <View style={styles.trustBadge}>
+              <Text style={styles.trustBadgeText}>Comprend le mina</Text>
+            </View>
+            <View style={styles.trustBadge}>
+              <Text style={styles.trustBadgeText}>Proche de toi</Text>
+            </View>
+          </View>
+        </View>
+
         <Pressable onPress={() => setDebugMode((v) => !v)} style={styles.debugToggle}>
           <Text style={styles.debugToggleText}>{debugMode ? "Masquer debug" : "Mode debug"}</Text>
         </Pressable>
@@ -1114,8 +1229,8 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.bg,
-    paddingTop: 58,
-    paddingHorizontal: 20,
+    paddingTop: 56,
+    paddingHorizontal: 18,
     overflow: "hidden",
   },
 
@@ -1125,33 +1240,43 @@ const styles = StyleSheet.create({
   },
 
   scrollContent: {
-    paddingBottom: 36,
+    paddingBottom: 34,
     flexGrow: 1,
   },
 
-  bgOrbTop: {
+  bgGlowTop: {
     position: "absolute",
-    top: -80,
-    right: -40,
-    width: 220,
-    height: 220,
-    borderRadius: 999,
-    backgroundColor: "rgba(99,164,255,0.08)",
-  },
-
-  bgOrbBottom: {
-    position: "absolute",
-    bottom: 60,
-    left: -60,
+    top: -120,
+    left: -50,
     width: 240,
     height: 240,
     borderRadius: 999,
-    backgroundColor: "rgba(83,229,167,0.06)",
+    backgroundColor: "rgba(25,227,198,0.06)",
+  },
+
+  bgGlowRight: {
+    position: "absolute",
+    top: 30,
+    right: -70,
+    width: 220,
+    height: 220,
+    borderRadius: 999,
+    backgroundColor: "rgba(61,164,255,0.08)",
+  },
+
+  bgGlowBottom: {
+    position: "absolute",
+    bottom: 40,
+    left: -80,
+    width: 250,
+    height: 250,
+    borderRadius: 999,
+    backgroundColor: "rgba(123,140,255,0.05)",
   },
 
   stickyHeader: {
     backgroundColor: COLORS.bg,
-    paddingBottom: 14,
+    paddingBottom: 16,
     zIndex: 20,
   },
 
@@ -1166,39 +1291,56 @@ const styles = StyleSheet.create({
     paddingRight: 12,
   },
 
-  headerBlock: {
-    marginTop: 16,
-    marginBottom: 28,
-  },
-
-  title: {
+  brandTitle: {
     color: COLORS.text,
-    fontSize: 33,
+    fontSize: 31,
     fontWeight: "900",
-    letterSpacing: 4,
+    letterSpacing: 3.5,
   },
 
-  subtitle: {
+  brandSubtitle: {
     color: COLORS.textSoft,
     marginTop: 8,
-    fontSize: 15,
+    fontSize: 14,
+    lineHeight: 20,
   },
 
-  heroSubtitle: {
-    color: COLORS.textSoft,
-    marginTop: 10,
-    fontSize: 16,
+  langPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: COLORS.darkPill,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    alignItems: "center",
+    justifyContent: "center",
   },
 
-  heroTopRow: {
-    width: "100%",
-    alignItems: "flex-start",
-    marginBottom: 10,
+  langPillText: {
+    color: COLORS.text,
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+  },
+
+  heroCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    padding: 22,
+    marginBottom: 16,
+  },
+
+  heroMetaRow: {
+    flexDirection: "row",
+    justifyContent: "flex-start",
+    marginBottom: 14,
   },
 
   heroBadge: {
-    backgroundColor: "rgba(99,164,255,0.14)",
-    borderColor: "rgba(99,164,255,0.18)",
+    backgroundColor: "rgba(61,164,255,0.12)",
+    borderColor: "rgba(61,164,255,0.18)",
     borderWidth: 1,
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -1209,148 +1351,134 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontSize: 11,
     fontWeight: "800",
-    letterSpacing: 1,
+    letterSpacing: 0.9,
   },
 
   heroTitle: {
     color: COLORS.text,
-    fontSize: 24,
-    fontWeight: "800",
-    textAlign: "center",
+    fontSize: 25,
+    fontWeight: "900",
+    lineHeight: 34,
     marginBottom: 10,
   },
 
   heroDescription: {
     color: COLORS.textSoft,
     fontSize: 15,
-    lineHeight: 22,
-    textAlign: "center",
+    lineHeight: 23,
+    marginBottom: 20,
   },
 
-  langPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: "rgba(99,164,255,0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(99,164,255,0.18)",
-  },
-
-  langPillText: {
-    color: COLORS.text,
-    fontSize: 12,
-    fontWeight: "800",
-  },
-
-  heroCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: COLORS.line,
-    padding: 22,
-    alignItems: "center",
-    marginBottom: 16,
-  },
-
-  voiceStateCard: {
-    width: "100%",
-    marginTop: 18,
-    marginBottom: 18,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 18,
+  commandBar: {
     backgroundColor: COLORS.surface2,
+    borderRadius: 24,
     borderWidth: 1,
     borderColor: COLORS.line,
+    paddingVertical: 16,
+    paddingHorizontal: 14,
+    flexDirection: "row",
     alignItems: "center",
+    minHeight: 118,
   },
 
-  voiceStateLabel: {
-    color: COLORS.text,
-    fontSize: 15,
-    fontWeight: "800",
-  },
-
-  voiceStateHint: {
-    color: COLORS.textSoft,
-    fontSize: 13,
-    marginTop: 4,
-    textAlign: "center",
-  },
-
-  micWrap: {
-    width: 290,
-    height: 290,
+  commandMicSide: {
+    width: 74,
+    height: 74,
     alignItems: "center",
     justifyContent: "center",
-    marginVertical: 4,
+    marginRight: 12,
   },
 
-  outerHalo: {
+  commandMicHaloOuter: {
     position: "absolute",
-    width: 270,
-    height: 270,
+    width: 74,
+    height: 74,
     borderRadius: 999,
-    backgroundColor: "rgba(99,164,255,0.10)",
+    backgroundColor: "rgba(61,164,255,0.12)",
     borderWidth: 1,
-    borderColor: "rgba(99,164,255,0.12)",
+    borderColor: "rgba(61,164,255,0.16)",
   },
 
-  middleHalo: {
+  commandMicHaloInner: {
     position: "absolute",
-    width: 225,
-    height: 225,
+    width: 62,
+    height: 62,
     borderRadius: 999,
-    backgroundColor: "rgba(83,229,167,0.10)",
+    backgroundColor: "rgba(25,227,198,0.12)",
     borderWidth: 1,
-    borderColor: "rgba(83,229,167,0.12)",
+    borderColor: "rgba(25,227,198,0.16)",
   },
 
-  micPressable: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  micButton: {
-    width: 182,
-    height: 182,
+  commandMicButton: {
+    width: 54,
+    height: 54,
     borderRadius: 999,
     backgroundColor: COLORS.surface3,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.08)",
-    shadowColor: "#63A4FF",
-    shadowOpacity: 0.22,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 8,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.10)",
+    zIndex: 2,
   },
 
-  micActive: {
-    borderColor: "rgba(83,229,167,0.45)",
+  commandMicButtonActive: {
+    borderColor: "rgba(25,227,198,0.55)",
   },
 
-  micText: {
-    fontSize: 70,
+  commandMicIcon: {
+    fontSize: 22,
   },
 
-  hint: {
+  commandCenter: {
+    flex: 1,
+    paddingRight: 10,
+  },
+
+  commandState: {
+    color: COLORS.text,
+    fontSize: 17,
+    fontWeight: "900",
+    marginBottom: 4,
+  },
+
+  commandHint: {
     color: COLORS.textSoft,
-    textAlign: "center",
-    marginTop: 8,
-    lineHeight: 22,
-    fontSize: 14,
-    paddingHorizontal: 8,
+    fontSize: 13,
+    lineHeight: 19,
   },
 
-  quickCard: {
+  commandAction: {
+    minWidth: 88,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 16,
+    backgroundColor: COLORS.successSoft,
+    borderWidth: 1,
+    borderColor: "rgba(25,227,198,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  commandActionText: {
+    color: COLORS.text,
+    fontSize: 14,
+    fontWeight: "800",
+  },
+
+  heroFootnote: {
+    color: COLORS.textMuted,
+    fontSize: 13,
+    lineHeight: 20,
+    marginTop: 14,
+  },
+
+  shortcutsCard: {
     backgroundColor: COLORS.surface,
-    borderRadius: 24,
+    borderRadius: 26,
     borderWidth: 1,
     borderColor: COLORS.line,
     padding: 20,
-    marginBottom: 14,
+    marginBottom: 16,
   },
 
   sectionEyebrow: {
@@ -1364,27 +1492,122 @@ const styles = StyleSheet.create({
 
   sectionTitle: {
     color: COLORS.text,
-    fontSize: 20,
-    fontWeight: "800",
-    marginBottom: 14,
+    fontSize: 21,
+    fontWeight: "900",
+    marginBottom: 16,
   },
 
-  exampleList: {
-    gap: 8,
+  shortcutsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    rowGap: 12,
   },
 
-  exampleItem: {
+  shortcutCard: {
+    width: "48.3%",
+    backgroundColor: COLORS.surface2,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    padding: 14,
+    minHeight: 156,
+  },
+
+  shortcutCardStatic: {
+    width: "48.3%",
+    backgroundColor: "rgba(255,255,255,0.025)",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    padding: 14,
+    minHeight: 156,
+  },
+
+  shortcutIconBox: {
+    width: 50,
+    height: 50,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+
+  shortcutIcon: {
+    fontSize: 25,
+  },
+
+  shortcutTitle: {
     color: COLORS.text,
-    fontSize: 15,
-    fontWeight: "600",
-    lineHeight: 22,
+    fontSize: 16,
+    fontWeight: "800",
+    marginBottom: 6,
+  },
+
+  shortcutDesc: {
+    color: COLORS.textSoft,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+
+  howCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 26,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    padding: 20,
+    marginBottom: 16,
+  },
+
+  stepsRow: {
+    gap: 12,
+  },
+
+  stepCard: {
+    backgroundColor: COLORS.surface2,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    padding: 16,
+  },
+
+  stepBadge: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    backgroundColor: COLORS.successSoft,
+    borderWidth: 1,
+    borderColor: "rgba(25,227,198,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+
+  stepBadgeText: {
+    color: COLORS.text,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+
+  stepTitle: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: "800",
+    marginBottom: 6,
+  },
+
+  stepDesc: {
+    color: COLORS.textSoft,
+    fontSize: 13,
+    lineHeight: 19,
   },
 
   statusCard: {
     backgroundColor: COLORS.infoBg,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: "rgba(99,164,255,0.14)",
+    borderColor: "rgba(61,164,255,0.16)",
     paddingVertical: 12,
     paddingHorizontal: 14,
     marginBottom: 14,
@@ -1402,7 +1625,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.line,
     padding: 20,
-    marginBottom: 14,
+    marginBottom: 16,
   },
 
   choiceColumn: {
@@ -1424,7 +1647,7 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: "rgba(255,255,255,0.05)",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 12,
@@ -1459,14 +1682,51 @@ const styles = StyleSheet.create({
   },
 
   primaryRetryBtnText: {
-    color: "#04120B",
+    color: "#062018",
     fontWeight: "900",
     fontSize: 15,
   },
 
+  trustCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 26,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    padding: 20,
+    marginBottom: 16,
+  },
+
+  trustLead: {
+    color: COLORS.textSoft,
+    fontSize: 14,
+    lineHeight: 22,
+    marginBottom: 14,
+  },
+
+  trustBadgesRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+
+  trustBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderWidth: 1,
+    borderColor: COLORS.line,
+  },
+
+  trustBadgeText: {
+    color: COLORS.text,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+
   debugToggle: {
     alignSelf: "center",
-    marginTop: 4,
+    marginTop: 2,
     marginBottom: 10,
     paddingVertical: 10,
     paddingHorizontal: 16,
@@ -1488,7 +1748,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.line,
     padding: 14,
-    marginBottom: 12,
+    marginBottom: 14,
   },
 
   input: {
@@ -1505,8 +1765,8 @@ const styles = StyleSheet.create({
 
   debugBtn: {
     width: "100%",
-    backgroundColor: "rgba(99,164,255,0.14)",
-    borderColor: "rgba(99,164,255,0.18)",
+    backgroundColor: "rgba(61,164,255,0.14)",
+    borderColor: "rgba(61,164,255,0.18)",
     borderWidth: 1,
     borderRadius: 14,
     paddingVertical: 12,
@@ -1518,8 +1778,27 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
 
-  langGrid: {
+  langHeader: {
     marginTop: 18,
+    marginBottom: 26,
+  },
+
+  langHeading: {
+    color: COLORS.text,
+    marginTop: 12,
+    fontSize: 24,
+    fontWeight: "900",
+  },
+
+  langLead: {
+    color: COLORS.textSoft,
+    marginTop: 10,
+    fontSize: 15,
+    lineHeight: 22,
+  },
+
+  langGrid: {
+    marginTop: 10,
     gap: 14,
   },
 
@@ -1529,14 +1808,23 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
     borderColor: COLORS.line,
     borderWidth: 1,
-    borderRadius: 22,
+    borderRadius: 24,
     paddingVertical: 18,
     paddingHorizontal: 16,
   },
 
-  langEmoji: {
-    fontSize: 24,
+  langIconBox: {
+    width: 52,
+    height: 52,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: 14,
+  },
+
+  langEmoji: {
+    fontSize: 22,
   },
 
   langTextBox: {
@@ -1553,11 +1841,12 @@ const styles = StyleSheet.create({
   langDesc: {
     color: COLORS.textSoft,
     fontSize: 13,
+    lineHeight: 18,
   },
 
   bottomLinks: {
     gap: 10,
-    marginTop: 10,
+    marginTop: 12,
     marginBottom: 16,
   },
 

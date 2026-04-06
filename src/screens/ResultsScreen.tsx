@@ -111,7 +111,6 @@ async function getNearCoordsSafe(
   if (Platform.OS === "web" && typeof window !== "undefined" && typeof navigator !== "undefined") {
     const nav = navigator as any;
 
-    // Safari iPhone: la géoloc exige HTTPS / secure context
     if (!window.isSecureContext) {
       console.log("Geolocation unavailable: insecure context");
       return { nearLat: null, nearLng: null };
@@ -155,7 +154,6 @@ async function getNearCoordsSafe(
         );
       });
 
-    // 1) tentative souple, souvent plus fiable sur Safari
     const quick = await getPosition({
       enableHighAccuracy: false,
       timeout: Math.min(timeoutMs, 6000),
@@ -166,7 +164,6 @@ async function getNearCoordsSafe(
       return quick;
     }
 
-    // 2) fallback plus précis
     const precise = await getPosition({
       enableHighAccuracy: true,
       timeout: timeoutMs,
@@ -200,6 +197,7 @@ async function getNearCoordsSafe(
     return { nearLat: null, nearLng: null };
   }
 }
+
 type AudioIntentResp = {
   intent: string;
   confidence: number;
@@ -286,21 +284,21 @@ function guessIntentFromText(text: string): AudioIntent {
 }
 
 const COLORS = {
-  bg: "#050816",
-  surface: "#0D1324",
-  surface2: "#121A2D",
-  surface3: "#0B1020",
+  bg: "#020B1F",
+  surface: "#07162D",
+  surface2: "#0B1D36",
+  surface3: "#102542",
   line: "rgba(255,255,255,0.08)",
   lineStrong: "rgba(255,255,255,0.14)",
-  text: "#F5F7FB",
-  textSoft: "#AAB3C5",
-  textMuted: "#7E879A",
-  accent: "#53E5A7",
-  accent2: "#63A4FF",
+  text: "#FFFFFF",
+  textSoft: "rgba(255,255,255,0.72)",
+  textMuted: "rgba(255,255,255,0.48)",
+  accent: "#14F1D9",
+  accent2: "#0EA5E9",
   accent3: "#8B7CFF",
   danger: "#FF7A7A",
-  successBg: "rgba(83,229,167,0.10)",
-  infoBg: "rgba(99,164,255,0.10)",
+  successBg: "rgba(20,241,217,0.10)",
+  infoBg: "rgba(14,165,233,0.10)",
 };
 
 export default function ResultsScreen({ navigation, route }: Props) {
@@ -824,7 +822,9 @@ export default function ResultsScreen({ navigation, route }: Props) {
         ? "Distance..."
         : "Sans distance";
 
-    const locality = [item.district || null, item.city || null].filter(Boolean).join(", ") || "Localisation non précisée";
+    const locality =
+      [item.district || null, item.city || null].filter(Boolean).join(", ") ||
+      "Localisation non précisée";
 
     return (
       <Pressable onPress={() => speakNameOnly(item.name)} style={styles.card}>
@@ -901,47 +901,57 @@ export default function ResultsScreen({ navigation, route }: Props) {
       <View style={styles.bgOrbTop} />
       <View style={styles.bgOrbBottom} />
 
-      <View style={styles.header}>
-        <Pressable
-          onPress={async () => {
-            await stopAllAudio();
-            navigation.goBack();
-          }}
-          style={styles.backBtn}
-        >
-          <Text style={styles.backText}>←</Text>
-        </Pressable>
-
-        <View style={styles.headerTextWrap}>
-          <Text style={styles.title}>{pageTitle}</Text>
-          <Text style={styles.subtitle}>
-            {hasCoords ? "Triés par distance" : district ? `Quartier : ${district}` : "Sans localisation"}
-          </Text>
-          <Text style={styles.query}>Requête : {queryText}</Text>
-        </View>
-
-        <Animated.View style={{ transform: [{ scale: pulse }] }}>
+      <View style={styles.heroCard}>
+        <View style={styles.heroTopRow}>
           <Pressable
             onPress={async () => {
               await stopAllAudio();
-              navigation.reset({
-                index: 0,
-                routes: [
-                  {
-                    name: "Home",
-                    params: {
-                      autoStartMic: true,
-                      skipLanguagePicker: true,
-                    } as any,
-                  },
-                ],
-              });
+              navigation.goBack();
             }}
-            style={[styles.micMini, isListening ? styles.micMiniActive : null]}
+            style={styles.backBtn}
           >
-            <Text style={styles.micMiniText}>{isListening ? "⏹️" : "🎙️"}</Text>
+            <Text style={styles.backText}>←</Text>
           </Pressable>
-        </Animated.View>
+
+          <View style={styles.heroTextWrap}>
+            <Text style={styles.heroEyebrow}>Résultats trouvés</Text>
+            <Text style={styles.heroTitle}>{pageTitle}</Text>
+            <Text style={styles.heroSubtitle}>
+              {hasCoords
+                ? "Classés autour de toi"
+                : district
+                ? `Zone : ${district}`
+                : "Recherche générale"}
+            </Text>
+          </View>
+
+          <Animated.View style={{ transform: [{ scale: pulse }] }}>
+            <Pressable
+              onPress={async () => {
+                await stopAllAudio();
+                navigation.reset({
+                  index: 0,
+                  routes: [
+                    {
+                      name: "Home",
+                      params: {
+                        autoStartMic: true,
+                        skipLanguagePicker: true,
+                      } as any,
+                    },
+                  ],
+                });
+              }}
+              style={[styles.heroMicBtn, isListening ? styles.heroMicBtnActive : null]}
+            >
+              <Text style={styles.heroMicText}>{isListening ? "⏹️" : "🎙️"}</Text>
+            </Pressable>
+          </Animated.View>
+        </View>
+
+        <View style={styles.queryPill}>
+          <Text style={styles.queryPillText}>{queryText}</Text>
+        </View>
       </View>
 
       {statusText ? (
@@ -1000,47 +1010,92 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.bg,
     paddingTop: 58,
-    paddingHorizontal: 20,
+    paddingHorizontal: 18,
     overflow: "hidden",
   },
 
   bgOrbTop: {
     position: "absolute",
-    top: -70,
-    right: -35,
-    width: 220,
-    height: 220,
+    top: -90,
+    right: -50,
+    width: 240,
+    height: 240,
     borderRadius: 999,
-    backgroundColor: "rgba(99,164,255,0.08)",
+    backgroundColor: "rgba(14,165,233,0.08)",
   },
 
   bgOrbBottom: {
     position: "absolute",
-    bottom: 40,
-    left: -60,
-    width: 240,
-    height: 240,
+    bottom: 20,
+    left: -70,
+    width: 250,
+    height: 250,
     borderRadius: 999,
-    backgroundColor: "rgba(83,229,167,0.06)",
+    backgroundColor: "rgba(20,241,217,0.06)",
   },
 
-  header: {
+  heroCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 30,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    padding: 18,
+    marginBottom: 16,
+  },
+
+  heroTopRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 12,
-    marginBottom: 12,
+    alignItems: "center",
+    gap: 14,
   },
 
-  headerTextWrap: {
+  heroTextWrap: {
     flex: 1,
-    paddingTop: 2,
+  },
+
+  heroEyebrow: {
+    color: COLORS.accent,
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    marginBottom: 6,
+  },
+
+  heroTitle: {
+    color: COLORS.text,
+    fontSize: 25,
+    fontWeight: "900",
+    lineHeight: 30,
+  },
+
+  heroSubtitle: {
+    color: COLORS.textSoft,
+    marginTop: 4,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+
+  queryPill: {
+    marginTop: 18,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+  },
+
+  queryPillText: {
+    color: "rgba(255,255,255,0.82)",
+    fontSize: 13,
   },
 
   backBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: COLORS.surface,
+    width: 50,
+    height: 50,
+    borderRadius: 18,
+    backgroundColor: COLORS.surface2,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
@@ -1049,53 +1104,36 @@ const styles = StyleSheet.create({
 
   backText: {
     color: COLORS.text,
-    fontSize: 20,
-    fontWeight: "700",
-  },
-
-  title: {
-    color: COLORS.text,
     fontSize: 21,
-    fontWeight: "900",
+    fontWeight: "800",
   },
 
-  subtitle: {
-    color: COLORS.textSoft,
-    marginTop: 3,
-    fontSize: 13,
-  },
-
-  query: {
-    color: COLORS.textMuted,
-    marginTop: 6,
-    fontSize: 12,
-  },
-
-  micMini: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: COLORS.surface,
+  heroMicBtn: {
+    width: 54,
+    height: 54,
+    borderRadius: 20,
+    backgroundColor: COLORS.surface2,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
     borderColor: COLORS.line,
   },
 
-  micMiniActive: {
-    borderColor: "rgba(83,229,167,0.45)",
+  heroMicBtnActive: {
+    borderColor: "rgba(20,241,217,0.40)",
+    backgroundColor: "rgba(20,241,217,0.08)",
   },
 
-  micMiniText: {
+  heroMicText: {
     color: COLORS.text,
-    fontSize: 18,
+    fontSize: 20,
   },
 
   statusCard: {
     backgroundColor: COLORS.infoBg,
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: "rgba(99,164,255,0.14)",
+    borderColor: "rgba(14,165,233,0.14)",
     paddingVertical: 11,
     paddingHorizontal: 14,
     marginBottom: 12,
@@ -1109,7 +1147,7 @@ const styles = StyleSheet.create({
 
   geoBox: {
     backgroundColor: COLORS.surface,
-    borderRadius: 20,
+    borderRadius: 24,
     borderWidth: 1,
     borderColor: COLORS.line,
     padding: 16,
@@ -1135,24 +1173,24 @@ const styles = StyleSheet.create({
 
   geoBtn: {
     backgroundColor: COLORS.accent,
-    borderRadius: 14,
-    paddingVertical: 12,
+    borderRadius: 16,
+    paddingVertical: 13,
     alignItems: "center",
   },
 
   geoBtnText: {
-    color: "#04120B",
+    color: "#062018",
     fontWeight: "900",
     fontSize: 14,
   },
 
   feedbackBox: {
     backgroundColor: COLORS.surface,
-    borderRadius: 18,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: COLORS.line,
     padding: 18,
-    marginTop: 6,
+    marginTop: 4,
   },
 
   loading: {
@@ -1162,11 +1200,11 @@ const styles = StyleSheet.create({
 
   errorBox: {
     backgroundColor: "rgba(255,122,122,0.08)",
-    borderRadius: 18,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: "rgba(255,122,122,0.14)",
     padding: 16,
-    marginTop: 6,
+    marginTop: 4,
   },
 
   error: {
@@ -1176,16 +1214,16 @@ const styles = StyleSheet.create({
 
   listContent: {
     paddingTop: 2,
-    paddingBottom: 30,
+    paddingBottom: 32,
   },
 
   card: {
     backgroundColor: COLORS.surface,
     borderColor: COLORS.line,
     borderWidth: 1,
-    borderRadius: 22,
-    padding: 16,
-    marginBottom: 14,
+    borderRadius: 28,
+    padding: 18,
+    marginBottom: 16,
   },
 
   cardTopRow: {
@@ -1208,12 +1246,12 @@ const styles = StyleSheet.create({
   },
 
   indexBadge: {
-    minWidth: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: "rgba(99,164,255,0.12)",
+    minWidth: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(14,165,233,0.12)",
     borderWidth: 1,
-    borderColor: "rgba(99,164,255,0.18)",
+    borderColor: "rgba(14,165,233,0.18)",
     alignItems: "center",
     justifyContent: "center",
     marginTop: 1,
@@ -1227,10 +1265,10 @@ const styles = StyleSheet.create({
 
   cardTitle: {
     color: COLORS.text,
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "800",
     lineHeight: 22,
-    marginBottom: 4,
+    marginBottom: 5,
   },
 
   cardMeta: {
@@ -1242,7 +1280,7 @@ const styles = StyleSheet.create({
   mapBtn: {
     width: 46,
     height: 46,
-    borderRadius: 14,
+    borderRadius: 16,
     backgroundColor: COLORS.surface2,
     borderWidth: 1,
     borderColor: COLORS.line,
@@ -1259,7 +1297,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
-    marginTop: 12,
+    marginTop: 13,
   },
 
   infoPill: {
@@ -1268,7 +1306,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderWidth: 1,
-    borderColor: "rgba(99,164,255,0.14)",
+    borderColor: "rgba(14,165,233,0.14)",
   },
 
   infoPillText: {
@@ -1301,19 +1339,19 @@ const styles = StyleSheet.create({
   actionRow: {
     flexDirection: "row",
     gap: 10,
-    marginTop: 14,
+    marginTop: 15,
   },
 
   callBtn: {
     flex: 1,
     backgroundColor: COLORS.accent,
-    borderRadius: 14,
-    paddingVertical: 12,
+    borderRadius: 16,
+    paddingVertical: 14,
     alignItems: "center",
   },
 
   callText: {
-    color: "#04120B",
+    color: "#062018",
     fontWeight: "900",
     fontSize: 14,
   },
@@ -1321,8 +1359,8 @@ const styles = StyleSheet.create({
   callBtnDisabled: {
     flex: 1,
     backgroundColor: "rgba(255,255,255,0.04)",
-    borderRadius: 14,
-    paddingVertical: 12,
+    borderRadius: 16,
+    paddingVertical: 14,
     alignItems: "center",
     borderWidth: 1,
     borderColor: COLORS.line,
@@ -1337,8 +1375,8 @@ const styles = StyleSheet.create({
   routeBtn: {
     flex: 1,
     backgroundColor: COLORS.surface2,
-    borderRadius: 14,
-    paddingVertical: 12,
+    borderRadius: 16,
+    paddingVertical: 14,
     alignItems: "center",
     borderWidth: 1,
     borderColor: COLORS.line,
