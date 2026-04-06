@@ -284,10 +284,10 @@ function guessIntentFromText(text: string): AudioIntent {
 
 const COLORS = {
   bg: "#F4EDE1",
-  overlay: "rgba(244,237,225,0.88)",
-  surface: "rgba(255,250,243,0.94)",
-  surfaceStrong: "rgba(255,248,239,0.98)",
-  surfaceSoft: "rgba(255,255,255,0.40)",
+  overlay: "rgba(244,237,225,0.56)",
+  surface: "rgba(255,250,243,0.80)",
+  surfaceStrong: "rgba(255,248,239,0.88)",
+  surfaceSoft: "rgba(255,255,255,0.44)",
   line: "rgba(95,67,37,0.10)",
   lineStrong: "rgba(95,67,37,0.18)",
   text: "#2F2418",
@@ -296,10 +296,10 @@ const COLORS = {
   accent: "#B5622E",
   accentDark: "#8E4A21",
   accentSoft: "#EED7C2",
-  infoBg: "rgba(181,98,46,0.08)",
-  okBg: "rgba(255,250,243,0.88)",
+  infoBg: "rgba(181,98,46,0.10)",
+  okBg: "rgba(255,250,243,0.74)",
   danger: "#B14A36",
-  dangerBg: "rgba(177,74,54,0.08)",
+  dangerBg: "rgba(177,74,54,0.10)",
 };
 
 export default function ResultsScreen({ navigation, route }: Props) {
