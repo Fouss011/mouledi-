@@ -8,6 +8,8 @@ import {
   Linking,
   Platform,
   Animated,
+  ImageBackground,
+  SafeAreaView,
 } from "react-native";
 import * as Speech from "expo-speech";
 import { Audio } from "expo-av";
@@ -269,10 +271,7 @@ function guessIntentFromText(text: string): AudioIntent {
     t.includes("fast food") ||
     t.includes("cafe");
 
-  const looksPharmacy =
-    t.includes("pharm") ||
-    t.includes("médic") ||
-    t.includes("medic");
+  const looksPharmacy = t.includes("pharm") || t.includes("médic") || t.includes("medic");
 
   if (looksPassport) return "PASSPORT";
   if (looksCni) return "CNI";
@@ -284,21 +283,23 @@ function guessIntentFromText(text: string): AudioIntent {
 }
 
 const COLORS = {
-  bg: "#020B1F",
-  surface: "#07162D",
-  surface2: "#0B1D36",
-  surface3: "#102542",
-  line: "rgba(255,255,255,0.08)",
-  lineStrong: "rgba(255,255,255,0.14)",
-  text: "#FFFFFF",
-  textSoft: "rgba(255,255,255,0.72)",
-  textMuted: "rgba(255,255,255,0.48)",
-  accent: "#14F1D9",
-  accent2: "#0EA5E9",
-  accent3: "#8B7CFF",
-  danger: "#FF7A7A",
-  successBg: "rgba(20,241,217,0.10)",
-  infoBg: "rgba(14,165,233,0.10)",
+  bg: "#F4EDE1",
+  overlay: "rgba(244,237,225,0.88)",
+  surface: "rgba(255,250,243,0.94)",
+  surfaceStrong: "rgba(255,248,239,0.98)",
+  surfaceSoft: "rgba(255,255,255,0.40)",
+  line: "rgba(95,67,37,0.10)",
+  lineStrong: "rgba(95,67,37,0.18)",
+  text: "#2F2418",
+  textSoft: "#5E4B38",
+  textMuted: "#8E7760",
+  accent: "#B5622E",
+  accentDark: "#8E4A21",
+  accentSoft: "#EED7C2",
+  infoBg: "rgba(181,98,46,0.08)",
+  okBg: "rgba(255,250,243,0.88)",
+  danger: "#B14A36",
+  dangerBg: "rgba(177,74,54,0.08)",
 };
 
 export default function ResultsScreen({ navigation, route }: Props) {
@@ -437,7 +438,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
             setStatusText("");
             await loadData(district, coords.nearLat, coords.nearLng, mode);
           } else {
-            setStatusText("Localisation indisponible sur ce navigateur (distance indisponible)");
+            setStatusText("Localisation indisponible sur ce navigateur.");
           }
         }
       } catch {}
@@ -564,32 +565,32 @@ export default function ResultsScreen({ navigation, route }: Props) {
     textForQuery = ""
   ) => {
     if (resolvedIntent === "PHARMACY_ON_CALL") {
-      setStatusText("✅ Pharmacie de garde");
+      setStatusText("Pharmacie de garde");
       await loadData(district, lat, lng, "oncall");
       return true;
     }
     if (resolvedIntent === "CLINIC") {
-      setStatusText("✅ Clinique");
+      setStatusText("Clinique");
       await loadData(district, lat, lng, "clinic");
       return true;
     }
     if (resolvedIntent === "RESTAURANT") {
-      setStatusText("✅ Restaurant");
+      setStatusText("Restaurant");
       await loadData(district, lat, lng, "restaurant");
       return true;
     }
     if (resolvedIntent === "PASSPORT") {
-      setStatusText("✅ Passeport");
+      setStatusText("Passeport");
       navigation.navigate("Guide", { guideKey: "passport", lang: "fr" });
       return true;
     }
     if (resolvedIntent === "CNI") {
-      setStatusText("✅ Carte d’identité");
+      setStatusText("Carte d’identité");
       navigation.navigate("Guide", { guideKey: "cni", lang: "fr" });
       return true;
     }
     if (resolvedIntent === "PHARMACY") {
-      setStatusText("✅ Pharmacie");
+      setStatusText("Pharmacie");
       await loadData(district, lat, lng, "all");
       return true;
     }
@@ -605,7 +606,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
     const ms = (st as any)?.durationMillis ?? 0;
     if (ms < 900) {
       setRecording(null);
-      setStatusText("Répétez");
+      setStatusText("Répète s’il te plaît");
       await playUi("repeat_please");
       return;
     }
@@ -619,17 +620,17 @@ export default function ResultsScreen({ navigation, route }: Props) {
       return;
     }
 
-    setStatusText("Réveil serveur…");
+    setStatusText("Connexion...");
     const okApi = await pingBackend();
     const okStt = await pingStt();
 
     if (!okApi) {
-      setStatusText("Backend indisponible");
+      setStatusText("Service indisponible");
       await playUi("repeat_please");
       return;
     }
     if (!okStt) {
-      setStatusText("Assistance vocale indisponible");
+      setStatusText("Voix indisponible");
       await playUi("repeat_please");
       return;
     }
@@ -645,7 +646,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
       setNearLngState(lng);
     }
 
-    setStatusText("Compréhension audio…");
+    setStatusText("Compréhension...");
     let audioIntent: AudioIntent = "UNKNOWN";
     try {
       const resp = (await matchIntentFromAudio(uri)) as AudioIntentResp;
@@ -657,7 +658,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
       if (handled) return;
     }
 
-    setStatusText("Reconnaissance STT…");
+    setStatusText("Reconnaissance...");
     const { text } = await sttFromAudio(uri);
 
     if (await tryHandleVoiceCommand(text)) {
@@ -700,17 +701,17 @@ export default function ResultsScreen({ navigation, route }: Props) {
               setStatusText("Traitement...");
               const blob = new Blob(chunks, { type: "audio/webm" });
 
-              setStatusText("Réveil serveur…");
+              setStatusText("Connexion...");
               const okApi = await pingBackend();
               const okStt = await pingStt();
 
               if (!okApi) {
-                setStatusText("Backend indisponible");
+                setStatusText("Service indisponible");
                 await playUi("repeat_please");
                 return;
               }
               if (!okStt) {
-                setStatusText("Assistance vocale indisponible");
+                setStatusText("Voix indisponible");
                 await playUi("repeat_please");
                 return;
               }
@@ -725,7 +726,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
                 setNearLngState(lng);
               }
 
-              setStatusText("Compréhension audio…");
+              setStatusText("Compréhension...");
               let audioIntent: AudioIntent = "UNKNOWN";
               try {
                 const resp = (await matchIntentFromBlob(blob)) as AudioIntentResp;
@@ -737,7 +738,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
                 if (handled) return;
               }
 
-              setStatusText("Reconnaissance STT…");
+              setStatusText("Reconnaissance...");
               const { text } = await sttFromBlob(blob);
 
               if (await tryHandleVoiceCommand(text)) {
@@ -800,7 +801,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
       setStatusText("");
       await loadData(district, coords.nearLat, coords.nearLng, mode);
     } else {
-      setStatusText("Localisation non disponible sur iPhone/Safari ou refusée");
+      setStatusText("Localisation non disponible ou refusée");
       await playUi("fallback_pharmacies_or_retry");
     }
   };
@@ -897,174 +898,172 @@ export default function ResultsScreen({ navigation, route }: Props) {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.bgOrbTop} />
-      <View style={styles.bgOrbBottom} />
+    <ImageBackground
+      source={require("../assets/mouledi-bg.png")}
+      style={styles.background}
+      resizeMode="cover"
+    >
+      <View style={styles.overlay} />
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.container}>
+          <View style={styles.heroCard}>
+            <View style={styles.heroTopRow}>
+              <Pressable
+                onPress={async () => {
+                  await stopAllAudio();
+                  navigation.goBack();
+                }}
+                style={styles.backBtn}
+              >
+                <Text style={styles.backText}>←</Text>
+              </Pressable>
 
-      <View style={styles.heroCard}>
-        <View style={styles.heroTopRow}>
-          <Pressable
-            onPress={async () => {
-              await stopAllAudio();
-              navigation.goBack();
-            }}
-            style={styles.backBtn}
-          >
-            <Text style={styles.backText}>←</Text>
-          </Pressable>
+              <View style={styles.heroTextWrap}>
+                <Text style={styles.heroEyebrow}>Résultats</Text>
+                <Text style={styles.heroTitle}>{pageTitle}</Text>
+                <Text style={styles.heroSubtitle}>
+                  {hasCoords
+                    ? "Classés autour de toi"
+                    : district
+                    ? `Zone : ${district}`
+                    : "Recherche générale"}
+                </Text>
+              </View>
 
-          <View style={styles.heroTextWrap}>
-            <Text style={styles.heroEyebrow}>Résultats trouvés</Text>
-            <Text style={styles.heroTitle}>{pageTitle}</Text>
-            <Text style={styles.heroSubtitle}>
-              {hasCoords
-                ? "Classés autour de toi"
-                : district
-                ? `Zone : ${district}`
-                : "Recherche générale"}
-            </Text>
-          </View>
-
-          <Animated.View style={{ transform: [{ scale: pulse }] }}>
-            <Pressable
-              onPress={async () => {
-                await stopAllAudio();
-                navigation.reset({
-                  index: 0,
-                  routes: [
-                    {
-                      name: "Home",
-                      params: {
-                        autoStartMic: true,
-                        skipLanguagePicker: true,
-                      } as any,
-                    },
-                  ],
-                });
-              }}
-              style={[styles.heroMicBtn, isListening ? styles.heroMicBtnActive : null]}
-            >
-              <Text style={styles.heroMicText}>{isListening ? "⏹️" : "🎙️"}</Text>
-            </Pressable>
-          </Animated.View>
-        </View>
-
-        <View style={styles.queryPill}>
-          <Text style={styles.queryPillText}>{queryText}</Text>
-        </View>
-      </View>
-
-      {statusText ? (
-        <View style={styles.statusCard}>
-          <Text style={styles.status}>{statusText}</Text>
-        </View>
-      ) : null}
-
-      {!hasCoords ? (
-        <View style={styles.geoBox}>
-          <View style={styles.geoTextWrap}>
-            <Text style={styles.geoTitle}>Active la localisation</Text>
-            <Text style={styles.geoText}>
-              Pour afficher la distance et classer les résultats autour de toi.
-            </Text>
-          </View>
-
-          <Pressable onPress={requestGeoAndReload} style={styles.geoBtn}>
-            <Text style={styles.geoBtnText}>Activer</Text>
-          </Pressable>
-        </View>
-      ) : null}
-
-      {loading ? (
-        <View style={styles.feedbackBox}>
-          <Text style={styles.loading}>Chargement...</Text>
-        </View>
-      ) : null}
-
-      {error ? (
-        <View style={styles.errorBox}>
-          <Text style={styles.error}>{error}</Text>
-        </View>
-      ) : null}
-
-      {!loading && !error ? (
-        <FlatList
-          data={items}
-          keyExtractor={(it, idx) => `${it.provider_id ?? it.name}-${idx}`}
-          contentContainerStyle={styles.listContent}
-          renderItem={renderItem}
-          showsVerticalScrollIndicator={false}
-          ListEmptyComponent={
-            <View style={styles.feedbackBox}>
-              <Text style={styles.loading}>Aucun résultat.</Text>
+              <Animated.View style={{ transform: [{ scale: pulse }] }}>
+                <Pressable
+                  onPress={async () => {
+                    await stopAllAudio();
+                    navigation.reset({
+                      index: 0,
+                      routes: [
+                        {
+                          name: "Home",
+                          params: {
+                            autoStartMic: true,
+                            skipLanguagePicker: true,
+                          } as any,
+                        },
+                      ],
+                    });
+                  }}
+                  style={[styles.heroMicBtn, isListening ? styles.heroMicBtnActive : null]}
+                >
+                  <Text style={styles.heroMicText}>{isListening ? "⏹️" : "🎙️"}</Text>
+                </Pressable>
+              </Animated.View>
             </View>
-          }
-        />
-      ) : null}
-    </View>
+
+            <View style={styles.queryPill}>
+              <Text style={styles.queryPillText}>{queryText}</Text>
+            </View>
+          </View>
+
+          {statusText ? (
+            <View style={styles.statusCard}>
+              <Text style={styles.status}>{statusText}</Text>
+            </View>
+          ) : null}
+
+          {!hasCoords ? (
+            <View style={styles.geoBox}>
+              <View style={styles.geoTextWrap}>
+                <Text style={styles.geoTitle}>Active la localisation</Text>
+                <Text style={styles.geoText}>
+                  Pour afficher la distance et mieux classer les résultats autour de toi.
+                </Text>
+              </View>
+
+              <Pressable onPress={requestGeoAndReload} style={styles.geoBtn}>
+                <Text style={styles.geoBtnText}>Activer</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
+          {loading ? (
+            <View style={styles.feedbackBox}>
+              <Text style={styles.loading}>Chargement...</Text>
+            </View>
+          ) : null}
+
+          {error ? (
+            <View style={styles.errorBox}>
+              <Text style={styles.error}>{error}</Text>
+            </View>
+          ) : null}
+
+          {!loading && !error ? (
+            <FlatList
+              data={items}
+              keyExtractor={(it, idx) => `${it.provider_id ?? it.name}-${idx}`}
+              contentContainerStyle={styles.listContent}
+              renderItem={renderItem}
+              showsVerticalScrollIndicator={false}
+              ListEmptyComponent={
+                <View style={styles.feedbackBox}>
+                  <Text style={styles.loading}>Aucun résultat.</Text>
+                </View>
+              }
+            />
+          ) : null}
+        </View>
+      </SafeAreaView>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  background: {
     flex: 1,
     backgroundColor: COLORS.bg,
-    paddingTop: 58,
+  },
+
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: COLORS.overlay,
+  },
+
+  safeArea: {
+    flex: 1,
+  },
+
+  container: {
+    flex: 1,
     paddingHorizontal: 18,
-    overflow: "hidden",
-  },
-
-  bgOrbTop: {
-    position: "absolute",
-    top: -90,
-    right: -50,
-    width: 240,
-    height: 240,
-    borderRadius: 999,
-    backgroundColor: "rgba(14,165,233,0.08)",
-  },
-
-  bgOrbBottom: {
-    position: "absolute",
-    bottom: 20,
-    left: -70,
-    width: 250,
-    height: 250,
-    borderRadius: 999,
-    backgroundColor: "rgba(20,241,217,0.06)",
+    paddingTop: 8,
   },
 
   heroCard: {
     backgroundColor: COLORS.surface,
-    borderRadius: 30,
+    borderRadius: 28,
     borderWidth: 1,
     borderColor: COLORS.line,
     padding: 18,
-    marginBottom: 16,
+    marginBottom: 14,
   },
 
   heroTopRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 14,
   },
 
   heroTextWrap: {
     flex: 1,
+    paddingHorizontal: 12,
   },
 
   heroEyebrow: {
     color: COLORS.accent,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "800",
-    letterSpacing: 1.4,
+    letterSpacing: 0.8,
     textTransform: "uppercase",
-    marginBottom: 6,
+    marginBottom: 5,
   },
 
   heroTitle: {
     color: COLORS.text,
-    fontSize: 25,
+    fontSize: 24,
     fontWeight: "900",
     lineHeight: 30,
   },
@@ -1077,25 +1076,25 @@ const styles = StyleSheet.create({
   },
 
   queryPill: {
-    marginTop: 18,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderRadius: 18,
+    marginTop: 16,
+    backgroundColor: COLORS.surfaceSoft,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
+    borderColor: COLORS.line,
     paddingVertical: 11,
     paddingHorizontal: 14,
   },
 
   queryPillText: {
-    color: "rgba(255,255,255,0.82)",
+    color: COLORS.textSoft,
     fontSize: 13,
   },
 
   backBtn: {
-    width: 50,
-    height: 50,
-    borderRadius: 18,
-    backgroundColor: COLORS.surface2,
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: COLORS.surfaceStrong,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
@@ -1111,8 +1110,8 @@ const styles = StyleSheet.create({
   heroMicBtn: {
     width: 54,
     height: 54,
-    borderRadius: 20,
-    backgroundColor: COLORS.surface2,
+    borderRadius: 18,
+    backgroundColor: COLORS.accentSoft,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
@@ -1120,20 +1119,20 @@ const styles = StyleSheet.create({
   },
 
   heroMicBtnActive: {
-    borderColor: "rgba(20,241,217,0.40)",
-    backgroundColor: "rgba(20,241,217,0.08)",
+    borderColor: COLORS.lineStrong,
+    backgroundColor: "#E7C8AF",
   },
 
   heroMicText: {
     color: COLORS.text,
-    fontSize: 20,
+    fontSize: 21,
   },
 
   statusCard: {
-    backgroundColor: COLORS.infoBg,
-    borderRadius: 18,
+    backgroundColor: COLORS.okBg,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: "rgba(14,165,233,0.14)",
+    borderColor: COLORS.line,
     paddingVertical: 11,
     paddingHorizontal: 14,
     marginBottom: 12,
@@ -1147,7 +1146,7 @@ const styles = StyleSheet.create({
 
   geoBox: {
     backgroundColor: COLORS.surface,
-    borderRadius: 24,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: COLORS.line,
     padding: 16,
@@ -1179,7 +1178,7 @@ const styles = StyleSheet.create({
   },
 
   geoBtnText: {
-    color: "#062018",
+    color: "#FFF8F2",
     fontWeight: "900",
     fontSize: 14,
   },
@@ -1199,10 +1198,10 @@ const styles = StyleSheet.create({
   },
 
   errorBox: {
-    backgroundColor: "rgba(255,122,122,0.08)",
+    backgroundColor: COLORS.dangerBg,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: "rgba(255,122,122,0.14)",
+    borderColor: "rgba(177,74,54,0.16)",
     padding: 16,
     marginTop: 4,
   },
@@ -1221,24 +1220,22 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
     borderColor: COLORS.line,
     borderWidth: 1,
-    borderRadius: 28,
+    borderRadius: 24,
     padding: 18,
-    marginBottom: 16,
+    marginBottom: 14,
   },
 
   cardTopRow: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: 12,
   },
 
   titleWrap: {
     flex: 1,
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 10,
-    paddingRight: 8,
+    paddingRight: 10,
   },
 
   titleTextWrap: {
@@ -1249,16 +1246,17 @@ const styles = StyleSheet.create({
     minWidth: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: "rgba(14,165,233,0.12)",
+    backgroundColor: COLORS.accentSoft,
     borderWidth: 1,
-    borderColor: "rgba(14,165,233,0.18)",
+    borderColor: COLORS.line,
     alignItems: "center",
     justifyContent: "center",
     marginTop: 1,
+    marginRight: 10,
   },
 
   indexBadgeText: {
-    color: COLORS.text,
+    color: COLORS.accentDark,
     fontSize: 13,
     fontWeight: "900",
   },
@@ -1281,7 +1279,7 @@ const styles = StyleSheet.create({
     width: 46,
     height: 46,
     borderRadius: 16,
-    backgroundColor: COLORS.surface2,
+    backgroundColor: COLORS.surfaceStrong,
     borderWidth: 1,
     borderColor: COLORS.line,
     alignItems: "center",
@@ -1306,7 +1304,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderWidth: 1,
-    borderColor: "rgba(14,165,233,0.14)",
+    borderColor: COLORS.line,
   },
 
   infoPillText: {
@@ -1316,7 +1314,7 @@ const styles = StyleSheet.create({
   },
 
   infoPillMuted: {
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: COLORS.surfaceSoft,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -1351,14 +1349,14 @@ const styles = StyleSheet.create({
   },
 
   callText: {
-    color: "#062018",
+    color: "#FFF8F2",
     fontWeight: "900",
     fontSize: 14,
   },
 
   callBtnDisabled: {
     flex: 1,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: COLORS.surfaceSoft,
     borderRadius: 16,
     paddingVertical: 14,
     alignItems: "center",
@@ -1374,7 +1372,7 @@ const styles = StyleSheet.create({
 
   routeBtn: {
     flex: 1,
-    backgroundColor: COLORS.surface2,
+    backgroundColor: COLORS.surfaceStrong,
     borderRadius: 16,
     paddingVertical: 14,
     alignItems: "center",
