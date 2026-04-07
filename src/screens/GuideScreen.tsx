@@ -6,8 +6,10 @@ import {
   Pressable,
   ScrollView,
   ImageBackground,
-  SafeAreaView,
+  Platform,
+  StatusBar,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../../App";
 import { ADMIN_GUIDES, GuideLanguage } from "../data/adminGuides";
@@ -16,9 +18,11 @@ type Props = NativeStackScreenProps<RootStackParamList, "Guide">;
 
 type GuideKey = "passport" | "cni" | "casier";
 
+const ANDROID_TOP = Platform.OS === "android" ? (StatusBar.currentHeight ?? 0) + 8 : 0;
+
 const COLORS = {
   bg: "#F5EFE4",
-  overlay: "rgba(245,239,228,0.88)",
+  overlay: "rgba(245,239,228,0.78)",
   surface: "rgba(255,251,245,0.94)",
   surfaceSoft: "rgba(255,248,239,0.90)",
   border: "rgba(110,78,42,0.12)",
@@ -30,7 +34,6 @@ const COLORS = {
   accentSoft: "#E8D2BF",
   badgeBg: "#F1E0CF",
   noteBg: "#F6E8D8",
-  shadow: "rgba(63, 37, 14, 0.08)",
 };
 
 export default function GuideScreen({ navigation, route }: Props) {
@@ -58,7 +61,7 @@ export default function GuideScreen({ navigation, route }: Props) {
     >
       <View style={styles.overlay} />
 
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView edges={["top", "left", "right", "bottom"]} style={styles.safeArea}>
         <View style={styles.container}>
           <View style={styles.headerCard}>
             <View style={styles.headerTop}>
@@ -132,7 +135,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingHorizontal: 18,
-    paddingTop: 10,
+    paddingTop: ANDROID_TOP,
   },
 
   headerCard: {
@@ -142,11 +145,6 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     padding: 18,
     marginBottom: 16,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
   },
 
   headerTop: {
@@ -226,11 +224,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     padding: 18,
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 2,
   },
 
   stepRow: {

@@ -9,8 +9,9 @@ import {
   Platform,
   Animated,
   ImageBackground,
-  SafeAreaView,
+  StatusBar,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import * as Speech from "expo-speech";
 import { Audio } from "expo-av";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -43,8 +44,16 @@ type AudioIntent =
   | "CNI"
   | "UNKNOWN";
 
+type AudioIntentResp = {
+  intent: string;
+  confidence: number;
+  scores?: Array<{ intent: string; score: number; n?: number }>;
+};
+
 let currentSound: Audio.Sound | null = null;
 let playSeq = 0;
+
+const ANDROID_TOP = Platform.OS === "android" ? (StatusBar.currentHeight ?? 0) + 8 : 0;
 
 async function stopCurrentSound() {
   try {
@@ -200,12 +209,6 @@ async function getNearCoordsSafe(
   }
 }
 
-type AudioIntentResp = {
-  intent: string;
-  confidence: number;
-  scores?: Array<{ intent: string; score: number; n?: number }>;
-};
-
 function normalizeIntent(i: string): AudioIntent {
   const x = (i || "").toUpperCase().trim();
   if (x === "PHARMACY") return "PHARMACY";
@@ -284,9 +287,9 @@ function guessIntentFromText(text: string): AudioIntent {
 
 const COLORS = {
   bg: "#F4EDE1",
-  overlay: "rgba(244,237,225,0.56)",
-  surface: "rgba(255,250,243,0.80)",
-  surfaceStrong: "rgba(255,248,239,0.88)",
+  overlay: "rgba(244,237,225,0.74)",
+  surface: "rgba(255,250,243,0.90)",
+  surfaceStrong: "rgba(255,248,239,0.96)",
   surfaceSoft: "rgba(255,255,255,0.44)",
   line: "rgba(95,67,37,0.10)",
   lineStrong: "rgba(95,67,37,0.18)",
@@ -297,7 +300,7 @@ const COLORS = {
   accentDark: "#8E4A21",
   accentSoft: "#EED7C2",
   infoBg: "rgba(181,98,46,0.10)",
-  okBg: "rgba(255,250,243,0.74)",
+  okBg: "rgba(255,250,243,0.82)",
   danger: "#B14A36",
   dangerBg: "rgba(177,74,54,0.10)",
 };
@@ -319,6 +322,8 @@ export default function ResultsScreen({ navigation, route }: Props) {
   const [webRec, setWebRec] = useState<MediaRecorder | null>(null);
 
   const pulse = useRef(new Animated.Value(1)).current;
+  const isListening = recording != null || webRec != null;
+  const failCountRef = useRef(0);
 
   const mode = useMemo(() => {
     if (intent === "PHARMACY_ON_CALL") return "oncall";
@@ -326,9 +331,6 @@ export default function ResultsScreen({ navigation, route }: Props) {
     if (intent === "RESTAURANT") return "restaurant";
     return "all";
   }, [intent]);
-
-  const isListening = recording != null || webRec != null;
-  const failCountRef = useRef(0);
 
   useEffect(() => {
     (async () => {
@@ -561,8 +563,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
   const handleResolvedIntent = async (
     resolvedIntent: AudioIntent,
     lat: number | null,
-    lng: number | null,
-    textForQuery = ""
+    lng: number | null
   ) => {
     if (resolvedIntent === "PHARMACY_ON_CALL") {
       setStatusText("Pharmacie de garde");
@@ -674,7 +675,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
     setStatusText(`Reconnu: ${text}`);
 
     const guessed = guessIntentFromText(text);
-    const handled = await handleResolvedIntent(guessed, lat, lng, text);
+    const handled = await handleResolvedIntent(guessed, lat, lng);
     if (handled) return;
 
     await handleUnknownQuery();
@@ -754,7 +755,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
               setStatusText(`Reconnu: ${text}`);
 
               const guessed = guessIntentFromText(text);
-              const handled = await handleResolvedIntent(guessed, lat, lng, text);
+              const handled = await handleResolvedIntent(guessed, lat, lng);
               if (handled) return;
 
               await handleUnknownQuery();
@@ -904,7 +905,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
       resizeMode="cover"
     >
       <View style={styles.overlay} />
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView edges={["top", "left", "right", "bottom"]} style={styles.safeArea}>
         <View style={styles.container}>
           <View style={styles.heroCard}>
             <View style={styles.heroTopRow}>
@@ -1030,7 +1031,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingHorizontal: 18,
-    paddingTop: 8,
+    paddingTop: ANDROID_TOP,
   },
 
   heroCard: {
