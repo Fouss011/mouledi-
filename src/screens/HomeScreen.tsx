@@ -10,9 +10,8 @@ import {
   Easing,
   ScrollView,
   ImageBackground,
-  StatusBar,
+  SafeAreaView,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { Audio } from "expo-av";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import * as Location from "expo-location";
@@ -42,8 +41,6 @@ type DirectIntent =
 
 let currentSound: Audio.Sound | null = null;
 let playSeq = 0;
-
-const ANDROID_TOP = Platform.OS === "android" ? (StatusBar.currentHeight ?? 0) + 8 : 0;
 
 async function stopCurrentSound() {
   try {
@@ -294,8 +291,8 @@ function getStatusLabel(statusText: string, isListening: boolean) {
 
 const COLORS = {
   bg: "#F4EDE1",
-  overlay: "rgba(244,237,225,0.78)",
-  surface: "rgba(255,250,243,0.90)",
+  overlay: "rgba(244,237,225,0.86)",
+  surface: "rgba(255,250,243,0.92)",
   surfaceStrong: "rgba(255,248,239,0.96)",
   surfaceSoft: "rgba(255,255,255,0.36)",
   line: "rgba(95,67,37,0.10)",
@@ -309,6 +306,7 @@ const COLORS = {
   successSoft: "rgba(181,98,46,0.10)",
   statusBg: "rgba(255,250,243,0.82)",
   darkPill: "rgba(255,248,239,0.88)",
+  shadow: "rgba(74, 45, 19, 0.10)",
 };
 
 export default function HomeScreen({ navigation, route }: Props) {
@@ -864,7 +862,7 @@ export default function HomeScreen({ navigation, route }: Props) {
         resizeMode="cover"
       >
         <View style={styles.overlay} />
-        <SafeAreaView edges={["top", "left", "right", "bottom"]} style={styles.safeArea}>
+        <SafeAreaView style={styles.safeArea}>
           <View style={styles.container}>
             <View style={styles.langScreenTop}>
               <Pressable onPress={handleTitlePress}>
@@ -946,7 +944,7 @@ export default function HomeScreen({ navigation, route }: Props) {
       resizeMode="cover"
     >
       <View style={styles.overlay} />
-      <SafeAreaView edges={["top", "left", "right", "bottom"]} style={styles.safeArea}>
+      <SafeAreaView style={styles.safeArea}>
         <View style={styles.container}>
           <View style={styles.topBar}>
             <View style={styles.brandBlock}>
@@ -1141,7 +1139,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingHorizontal: 18,
-    paddingTop: ANDROID_TOP,
+    paddingTop: 8,
   },
 
   scrollView: {
@@ -1156,7 +1154,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 12,
   },
 
   brandBlock: {
@@ -1198,6 +1196,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginBottom: 16,
     alignItems: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
   },
 
   heroSmall: {
@@ -1250,6 +1253,11 @@ const styles = StyleSheet.create({
     borderWidth: 4,
     borderColor: "rgba(255,255,255,0.55)",
     zIndex: 2,
+    shadowColor: "#000",
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 6,
   },
 
   micButtonActive: {
@@ -1461,7 +1469,7 @@ const styles = StyleSheet.create({
   },
 
   langScreenTop: {
-    marginTop: 6,
+    marginTop: 12,
     marginBottom: 24,
   },
 
