@@ -9,6 +9,7 @@ import {
   SafeAreaView,
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { Feather, Ionicons } from "@expo/vector-icons";
 import { RootStackParamList } from "../../App";
 import { ADMIN_GUIDES, GuideLanguage } from "../data/adminGuides";
 
@@ -17,20 +18,22 @@ type Props = NativeStackScreenProps<RootStackParamList, "Guide">;
 type GuideKey = "passport" | "cni" | "casier";
 
 const COLORS = {
-  bg: "#F5EFE4",
-  overlay: "rgba(245,239,228,0.88)",
-  surface: "rgba(255,251,245,0.94)",
-  surfaceSoft: "rgba(255,248,239,0.90)",
-  border: "rgba(110,78,42,0.12)",
-  borderStrong: "rgba(110,78,42,0.20)",
-  text: "#2E2418",
-  textSoft: "#5E4B38",
-  textMuted: "#8A7561",
-  accent: "#A85C2C",
-  accentSoft: "#E8D2BF",
-  badgeBg: "#F1E0CF",
-  noteBg: "#F6E8D8",
-  shadow: "rgba(63, 37, 14, 0.08)",
+  bg: "#F5EFE6",
+  overlay: "rgba(245,239,230,0.93)",
+  card: "rgba(255,255,255,0.86)",
+  cardStrong: "#FFFDF9",
+  cardSoft: "rgba(255,255,255,0.58)",
+  border: "rgba(80,50,20,0.08)",
+  borderStrong: "rgba(80,50,20,0.16)",
+  text: "#2F241C",
+  textSoft: "#6B5B4D",
+  textMuted: "#8A796A",
+  primary: "#B96A32",
+  primaryDark: "#8F4D22",
+  primarySoft: "rgba(185,106,50,0.12)",
+  primaryUltraSoft: "rgba(185,106,50,0.06)",
+  noteBg: "rgba(185,106,50,0.08)",
+  white: "#FFFFFF",
 };
 
 export default function GuideScreen({ navigation, route }: Props) {
@@ -50,11 +53,15 @@ export default function GuideScreen({ navigation, route }: Props) {
     ADMIN_GUIDES?.fr?.[guideKey] ??
     ADMIN_GUIDES.fr.passport;
 
+  const langLabel =
+    lang === "fr" ? "Français" : lang === "mina" ? "Mina" : "Kabyè";
+
   return (
     <ImageBackground
       source={require("../assets/mouledi-bg.png")}
       style={styles.background}
       resizeMode="cover"
+      imageStyle={styles.bgImage}
     >
       <View style={styles.overlay} />
 
@@ -63,22 +70,23 @@ export default function GuideScreen({ navigation, route }: Props) {
           <View style={styles.headerCard}>
             <View style={styles.headerTop}>
               <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
-                <Text style={styles.backText}>←</Text>
+                <Feather name="arrow-left" size={20} color={COLORS.text} />
               </Pressable>
 
               <View style={styles.headerTextBlock}>
-                <Text style={styles.kicker}>Guide</Text>
+                <Text style={styles.kicker}>Guide pratique</Text>
                 <Text style={styles.title}>{guide.title}</Text>
                 <Text style={styles.subtitle}>
-                  Lis les étapes une par une, simplement.
+                  Suis les étapes une par une, simplement.
                 </Text>
               </View>
             </View>
 
-            <View style={styles.langPill}>
-              <Text style={styles.langPillText}>
-                {lang === "fr" ? "Français" : lang === "mina" ? "Mina" : "Kabyè"}
-              </Text>
+            <View style={styles.headerBottom}>
+              <View style={styles.langPill}>
+                <Ionicons name="language-outline" size={14} color={COLORS.primaryDark} />
+                <Text style={styles.langPillText}>{langLabel}</Text>
+              </View>
             </View>
           </View>
 
@@ -102,7 +110,13 @@ export default function GuideScreen({ navigation, route }: Props) {
 
               {guide.note ? (
                 <View style={styles.noteBox}>
-                  <Text style={styles.noteTitle}>À retenir</Text>
+                  <View style={styles.noteHeader}>
+                    <View style={styles.noteIconWrap}>
+                      <Feather name="info" size={15} color={COLORS.primaryDark} />
+                    </View>
+                    <Text style={styles.noteTitle}>À retenir</Text>
+                  </View>
+
                   <Text style={styles.noteText}>{guide.note}</Text>
                 </View>
               ) : null}
@@ -120,6 +134,11 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bg,
   },
 
+  bgImage: {
+    opacity: 0.08,
+    transform: [{ scale: 1.08 }],
+  },
+
   overlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: COLORS.overlay,
@@ -131,22 +150,22 @@ const styles = StyleSheet.create({
 
   container: {
     flex: 1,
-    paddingHorizontal: 18,
+    paddingHorizontal: 20,
     paddingTop: 10,
   },
 
   headerCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 26,
+    backgroundColor: COLORS.card,
+    borderRadius: 30,
     borderWidth: 1,
     borderColor: COLORS.border,
     padding: 18,
     marginBottom: 16,
     shadowColor: "#000",
     shadowOpacity: 0.08,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 5,
   },
 
   headerTop: {
@@ -155,10 +174,10 @@ const styles = StyleSheet.create({
   },
 
   backBtn: {
-    width: 46,
-    height: 46,
-    borderRadius: 14,
-    backgroundColor: COLORS.surfaceSoft,
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: COLORS.cardStrong,
     borderWidth: 1,
     borderColor: COLORS.border,
     alignItems: "center",
@@ -166,23 +185,17 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
 
-  backText: {
-    color: COLORS.text,
-    fontSize: 22,
-    fontWeight: "800",
-  },
-
   headerTextBlock: {
     flex: 1,
   },
 
   kicker: {
-    color: COLORS.accent,
+    color: COLORS.primary,
     fontSize: 12,
     fontWeight: "800",
     marginBottom: 4,
     textTransform: "uppercase",
-    letterSpacing: 0.8,
+    letterSpacing: 1,
   },
 
   title: {
@@ -199,21 +212,29 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 
-  langPill: {
+  headerBottom: {
     marginTop: 14,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  langPill: {
     alignSelf: "flex-start",
-    backgroundColor: COLORS.accentSoft,
+    backgroundColor: COLORS.primarySoft,
     borderRadius: 999,
     paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingVertical: 8,
     borderWidth: 1,
     borderColor: COLORS.border,
+    flexDirection: "row",
+    alignItems: "center",
   },
 
   langPillText: {
-    color: COLORS.accent,
+    color: COLORS.primaryDark,
     fontSize: 12,
     fontWeight: "800",
+    marginLeft: 6,
   },
 
   content: {
@@ -221,8 +242,8 @@ const styles = StyleSheet.create({
   },
 
   mainCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 26,
+    backgroundColor: COLORS.card,
+    borderRadius: 30,
     borderWidth: 1,
     borderColor: COLORS.border,
     padding: 18,
@@ -240,10 +261,10 @@ const styles = StyleSheet.create({
   },
 
   badge: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: COLORS.badgeBg,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.primarySoft,
     borderWidth: 1,
     borderColor: COLORS.borderStrong,
     alignItems: "center",
@@ -253,25 +274,25 @@ const styles = StyleSheet.create({
   },
 
   badgeText: {
-    color: COLORS.accent,
+    color: COLORS.primaryDark,
     fontSize: 14,
     fontWeight: "900",
   },
 
   stepCard: {
     flex: 1,
-    backgroundColor: COLORS.surfaceSoft,
-    borderRadius: 20,
+    backgroundColor: COLORS.cardSoft,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: COLORS.border,
-    padding: 15,
+    padding: 16,
   },
 
   stepTitle: {
     color: COLORS.text,
     fontSize: 15,
     fontWeight: "800",
-    marginBottom: 6,
+    marginBottom: 7,
   },
 
   stepText: {
@@ -283,19 +304,34 @@ const styles = StyleSheet.create({
   noteBox: {
     marginTop: 6,
     backgroundColor: COLORS.noteBg,
-    borderRadius: 20,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: COLORS.border,
-    padding: 15,
+    padding: 16,
+  },
+
+  noteHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+
+  noteIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: COLORS.primarySoft,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 8,
   },
 
   noteTitle: {
-    color: COLORS.accent,
+    color: COLORS.primaryDark,
     fontSize: 13,
     fontWeight: "800",
-    marginBottom: 6,
     textTransform: "uppercase",
-    letterSpacing: 0.6,
+    letterSpacing: 0.8,
   },
 
   noteText: {

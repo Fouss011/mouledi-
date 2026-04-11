@@ -15,6 +15,12 @@ import {
 import { Audio } from "expo-av";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import * as Location from "expo-location";
+import {
+  Feather,
+  MaterialCommunityIcons,
+  Ionicons,
+  FontAwesome5,
+} from "@expo/vector-icons";
 
 import { RootStackParamList } from "../../App";
 import {
@@ -285,28 +291,28 @@ function guessIntentFromText(text: string): DirectIntent {
 
 function getStatusLabel(statusText: string, isListening: boolean) {
   if (isListening) return "J’écoute...";
-  if (!statusText) return "Appuie sur le micro";
+  if (!statusText) return "Appuie pour parler";
   return statusText;
 }
 
 const COLORS = {
-  bg: "#F4EDE1",
-  overlay: "rgba(244,237,225,0.86)",
-  surface: "rgba(255,250,243,0.92)",
-  surfaceStrong: "rgba(255,248,239,0.96)",
-  surfaceSoft: "rgba(255,255,255,0.36)",
-  line: "rgba(95,67,37,0.10)",
-  lineStrong: "rgba(95,67,37,0.18)",
-  text: "#2F2418",
-  textSoft: "#5E4B38",
-  textMuted: "#8E7760",
-  accent: "#B5622E",
-  accentDark: "#8E4A21",
-  accentSoft: "#EED7C2",
-  successSoft: "rgba(181,98,46,0.10)",
-  statusBg: "rgba(255,250,243,0.82)",
-  darkPill: "rgba(255,248,239,0.88)",
-  shadow: "rgba(74, 45, 19, 0.10)",
+  bg: "#F5EFE6",
+  overlay: "rgba(245,239,230,0.93)",
+  card: "rgba(255,255,255,0.86)",
+  cardStrong: "#FFFDF9",
+  cardSoft: "rgba(255,255,255,0.58)",
+  border: "rgba(80,50,20,0.08)",
+  borderStrong: "rgba(80,50,20,0.16)",
+  text: "#2F241C",
+  textSoft: "#6B5B4D",
+  textMuted: "#8A796A",
+  primary: "#B96A32",
+  primaryDark: "#8F4D22",
+  primarySoft: "rgba(185,106,50,0.12)",
+  primaryUltraSoft: "rgba(185,106,50,0.06)",
+  shadow: "rgba(0,0,0,0.08)",
+  white: "#FFFFFF",
+  whiteSoft: "rgba(255,255,255,0.78)",
 };
 
 export default function HomeScreen({ navigation, route }: Props) {
@@ -351,9 +357,7 @@ export default function HomeScreen({ navigation, route }: Props) {
     const skip = route.params?.skipLanguagePicker ?? false;
     const auto = route.params?.autoStartMic ?? false;
 
-    if (showLangPicker || skip || auto) {
-      return;
-    }
+    if (showLangPicker || skip || auto) return;
 
     if (!hasPlayedWelcome) {
       playUi("welcome", selectedLang).catch(() => {});
@@ -393,7 +397,7 @@ export default function HomeScreen({ navigation, route }: Props) {
           ]),
           Animated.sequence([
             Animated.timing(halo, {
-              toValue: 0.9,
+              toValue: 0.88,
               duration: 850,
               useNativeDriver: true,
             }),
@@ -854,12 +858,15 @@ export default function HomeScreen({ navigation, route }: Props) {
 
   const statusLabel = getStatusLabel(statusText, isListening);
 
+  const showDebugToggle = __DEV__;
+
   if (showLangPicker) {
     return (
       <ImageBackground
         source={require("../assets/mouledi-bg.png")}
         style={styles.background}
         resizeMode="cover"
+        imageStyle={styles.bgImage}
       >
         <View style={styles.overlay} />
         <SafeAreaView style={styles.safeArea}>
@@ -868,14 +875,15 @@ export default function HomeScreen({ navigation, route }: Props) {
               <Pressable onPress={handleTitlePress}>
                 <Text style={styles.brandTitle}>MOULÉDI</Text>
               </Pressable>
+
               <Text style={styles.langHeading}>Choisis ta langue</Text>
-              <Text style={styles.langLead}>Simple. Vocal. Rapide.</Text>
+              <Text style={styles.langLead}>Une expérience vocale simple, claire et rapide.</Text>
             </View>
 
             <View style={styles.langGrid}>
               <Pressable style={styles.langCard} onPress={() => chooseLanguage("mina")}>
                 <View style={styles.langIconBox}>
-                  <Text style={styles.langEmoji}>🗣️</Text>
+                  <MaterialCommunityIcons name="account-voice" size={24} color={COLORS.primaryDark} />
                 </View>
                 <View style={styles.langTextBox}>
                   <Text style={styles.langTitle}>Mina</Text>
@@ -885,7 +893,7 @@ export default function HomeScreen({ navigation, route }: Props) {
 
               <Pressable style={styles.langCard} onPress={() => chooseLanguage("kabyè")}>
                 <View style={styles.langIconBox}>
-                  <Text style={styles.langEmoji}>🗣️</Text>
+                  <MaterialCommunityIcons name="account-voice" size={24} color={COLORS.primaryDark} />
                 </View>
                 <View style={styles.langTextBox}>
                   <Text style={styles.langTitle}>Kabyè</Text>
@@ -895,7 +903,7 @@ export default function HomeScreen({ navigation, route }: Props) {
 
               <Pressable style={styles.langCard} onPress={() => chooseLanguage("fr")}>
                 <View style={styles.langIconBox}>
-                  <Text style={styles.langEmoji}>🇫🇷</Text>
+                  <Ionicons name="language" size={24} color={COLORS.primaryDark} />
                 </View>
                 <View style={styles.langTextBox}>
                   <Text style={styles.langTitle}>Français</Text>
@@ -905,7 +913,7 @@ export default function HomeScreen({ navigation, route }: Props) {
 
               <Pressable style={styles.langCard} onPress={() => chooseLanguage("mute")}>
                 <View style={styles.langIconBox}>
-                  <Text style={styles.langEmoji}>🔇</Text>
+                  <Feather name="volume-x" size={22} color={COLORS.primaryDark} />
                 </View>
                 <View style={styles.langTextBox}>
                   <Text style={styles.langTitle}>Mode muet</Text>
@@ -942,6 +950,7 @@ export default function HomeScreen({ navigation, route }: Props) {
       source={require("../assets/mouledi-bg.png")}
       style={styles.background}
       resizeMode="cover"
+      imageStyle={styles.bgImage}
     >
       <View style={styles.overlay} />
       <SafeAreaView style={styles.safeArea}>
@@ -973,7 +982,7 @@ export default function HomeScreen({ navigation, route }: Props) {
             bounces={false}
           >
             <View style={styles.heroCard}>
-              <Text style={styles.heroSmall}>Parle pour chercher</Text>
+              <Text style={styles.heroEyebrow}>Recherche vocale</Text>
 
               <View style={styles.micZone}>
                 <Animated.View
@@ -1005,7 +1014,15 @@ export default function HomeScreen({ navigation, route }: Props) {
                       { transform: [{ scale: pulse }] },
                     ]}
                   >
-                    <Text style={styles.micIcon}>{isListening ? "⏹️" : "🎙️"}</Text>
+                    {isListening ? (
+                      <Ionicons name="stop" size={40} color={COLORS.white} />
+                    ) : (
+                      <MaterialCommunityIcons
+                        name="microphone"
+                        size={50}
+                        color={COLORS.white}
+                      />
+                    )}
                   </Animated.View>
                 </Pressable>
               </View>
@@ -1014,11 +1031,11 @@ export default function HomeScreen({ navigation, route }: Props) {
               <Text style={styles.heroHint}>
                 {isListening
                   ? "Parle puis appuie encore pour envoyer."
-                  : "Exemple : Moulédi pharmacie"}
+                  : "Exemple : “Moulédi pharmacie”"}
               </Text>
 
               <Pressable onPress={onPressMic} style={styles.primaryBtn}>
-                <Text style={styles.primaryBtnText}>{isListening ? "Arrêter" : "Parler"}</Text>
+                <Text style={styles.primaryBtnText}>{isListening ? "Arrêter" : "Commencer"}</Text>
               </Pressable>
             </View>
 
@@ -1027,74 +1044,111 @@ export default function HomeScreen({ navigation, route }: Props) {
 
               <View style={styles.quickGrid}>
                 <Pressable style={styles.quickItem} onPress={openPharmacies}>
-                  <Text style={styles.quickIcon}>💊</Text>
+                  <View style={styles.quickIconWrap}>
+                    <FontAwesome5 name="pills" size={18} color={COLORS.primaryDark} />
+                  </View>
                   <Text style={styles.quickText}>Pharmacie</Text>
+                  <Text style={styles.quickSubtext}>À proximité</Text>
                 </Pressable>
 
                 <Pressable style={styles.quickItem} onPress={openClinics}>
-                  <Text style={styles.quickIcon}>🏥</Text>
+                  <View style={styles.quickIconWrap}>
+                    <MaterialCommunityIcons
+                      name="hospital-building"
+                      size={22}
+                      color={COLORS.primaryDark}
+                    />
+                  </View>
                   <Text style={styles.quickText}>Clinique</Text>
+                  <Text style={styles.quickSubtext}>Autour de toi</Text>
                 </Pressable>
 
                 <Pressable style={styles.quickItem} onPress={openRestaurants}>
-                  <Text style={styles.quickIcon}>🍽️</Text>
+                  <View style={styles.quickIconWrap}>
+                    <MaterialCommunityIcons
+                      name="silverware-fork-knife"
+                      size={22}
+                      color={COLORS.primaryDark}
+                    />
+                  </View>
                   <Text style={styles.quickText}>Restaurant</Text>
+                  <Text style={styles.quickSubtext}>Près de toi</Text>
                 </Pressable>
               </View>
             </View>
 
             {statusText ? (
               <View style={styles.statusCard}>
+                <View style={styles.statusDot} />
                 <Text style={styles.statusText}>{statusText}</Text>
               </View>
             ) : null}
 
             {showFallback ? (
               <View style={styles.choiceBox}>
-                <Text style={styles.sectionTitle}>Tu peux choisir</Text>
+                <Text style={styles.sectionTitle}>Suggestions</Text>
 
                 <View style={styles.choiceColumn}>
                   <Pressable onPress={openPharmacies} style={styles.choiceCard}>
-                    <Text style={styles.choiceIcon}>💊</Text>
+                    <View style={styles.choiceIconWrap}>
+                      <FontAwesome5 name="pills" size={16} color={COLORS.primaryDark} />
+                    </View>
                     <Text style={styles.choiceText}>Pharmacies proches</Text>
                   </Pressable>
 
                   <Pressable onPress={openClinics} style={styles.choiceCard}>
-                    <Text style={styles.choiceIcon}>🏥</Text>
+                    <View style={styles.choiceIconWrap}>
+                      <MaterialCommunityIcons
+                        name="hospital-building"
+                        size={18}
+                        color={COLORS.primaryDark}
+                      />
+                    </View>
                     <Text style={styles.choiceText}>Cliniques proches</Text>
                   </Pressable>
 
                   <Pressable onPress={openRestaurants} style={styles.choiceCard}>
-                    <Text style={styles.choiceIcon}>🍽️</Text>
+                    <View style={styles.choiceIconWrap}>
+                      <MaterialCommunityIcons
+                        name="silverware-fork-knife"
+                        size={18}
+                        color={COLORS.primaryDark}
+                      />
+                    </View>
                     <Text style={styles.choiceText}>Restaurants proches</Text>
                   </Pressable>
                 </View>
 
                 <Pressable onPress={onPressMic} style={styles.secondaryBtn}>
+                  <Feather name="mic" size={16} color={COLORS.primaryDark} />
                   <Text style={styles.secondaryBtnText}>Réessayer au micro</Text>
                 </Pressable>
               </View>
             ) : null}
 
-            <Pressable onPress={() => setDebugMode((v) => !v)} style={styles.debugToggle}>
-              <Text style={styles.debugToggleText}>
-                {debugMode ? "Masquer debug" : "Mode debug"}
-              </Text>
-            </Pressable>
-
-            {debugMode ? (
-              <View style={styles.debugCard}>
-                <TextInput
-                  value={typed}
-                  onChangeText={setTyped}
-                  placeholder="Ex: passeport"
-                  placeholderTextColor={COLORS.textMuted}
-                  style={styles.input}
-                />
-                <Pressable onPress={onDebugGo} style={styles.debugBtn}>
-                  <Text style={styles.debugText}>Tester avec le texte</Text>
+            {showDebugToggle ? (
+              <>
+                <Pressable onPress={() => setDebugMode((v) => !v)} style={styles.debugToggle}>
+                  <Text style={styles.debugToggleText}>
+                    {debugMode ? "Masquer debug" : "Mode développeur"}
+                  </Text>
                 </Pressable>
-              </View>
+
+                {debugMode ? (
+                  <View style={styles.debugCard}>
+                    <TextInput
+                      value={typed}
+                      onChangeText={setTyped}
+                      placeholder="Ex : passeport"
+                      placeholderTextColor={COLORS.textMuted}
+                      style={styles.input}
+                    />
+                    <Pressable onPress={onDebugGo} style={styles.debugBtn}>
+                      <Text style={styles.debugText}>Tester avec le texte</Text>
+                    </Pressable>
+                  </View>
+                ) : null}
+              </>
             ) : null}
 
             {showHiddenAccess ? (
@@ -1127,6 +1181,11 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bg,
   },
 
+  bgImage: {
+    opacity: 0.08,
+    transform: [{ scale: 1.08 }],
+  },
+
   overlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: COLORS.overlay,
@@ -1138,8 +1197,8 @@ const styles = StyleSheet.create({
 
   container: {
     flex: 1,
-    paddingHorizontal: 18,
-    paddingTop: 8,
+    paddingHorizontal: 20,
+    paddingTop: 10,
   },
 
   scrollView: {
@@ -1154,7 +1213,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 14,
   },
 
   brandBlock: {
@@ -1166,16 +1225,16 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontSize: 28,
     fontWeight: "900",
-    letterSpacing: 2.2,
+    letterSpacing: 1.2,
   },
 
   langPill: {
-    paddingHorizontal: 14,
-    paddingVertical: 9,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderRadius: 999,
-    backgroundColor: COLORS.darkPill,
+    backgroundColor: COLORS.whiteSoft,
     borderWidth: 1,
-    borderColor: COLORS.line,
+    borderColor: COLORS.border,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1184,35 +1243,37 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontSize: 12,
     fontWeight: "800",
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
   },
 
   heroCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 28,
+    backgroundColor: COLORS.card,
+    borderRadius: 30,
     borderWidth: 1,
-    borderColor: COLORS.line,
-    paddingVertical: 22,
+    borderColor: COLORS.border,
+    paddingVertical: 24,
     paddingHorizontal: 20,
     marginBottom: 16,
     alignItems: "center",
     shadowColor: "#000",
     shadowOpacity: 0.08,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 5,
   },
 
-  heroSmall: {
-    color: COLORS.textSoft,
-    fontSize: 14,
-    fontWeight: "700",
-    marginBottom: 12,
+  heroEyebrow: {
+    color: COLORS.primaryDark,
+    fontSize: 13,
+    fontWeight: "800",
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    marginBottom: 16,
   },
 
   micZone: {
     width: "100%",
-    minHeight: 280,
+    minHeight: 210,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 10,
@@ -1220,22 +1281,22 @@ const styles = StyleSheet.create({
 
   micHaloOuter: {
     position: "absolute",
-    width: 228,
-    height: 228,
+    width: 190,
+    height: 190,
     borderRadius: 999,
-    backgroundColor: "rgba(181,98,46,0.10)",
+    backgroundColor: COLORS.primaryUltraSoft,
     borderWidth: 1,
-    borderColor: "rgba(181,98,46,0.12)",
+    borderColor: "rgba(185,106,50,0.10)",
   },
 
   micHaloInner: {
     position: "absolute",
-    width: 188,
-    height: 188,
+    width: 156,
+    height: 156,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.25)",
+    backgroundColor: "rgba(255,255,255,0.46)",
     borderWidth: 1,
-    borderColor: "rgba(181,98,46,0.10)",
+    borderColor: "rgba(185,106,50,0.08)",
   },
 
   micButtonWrap: {
@@ -1244,74 +1305,70 @@ const styles = StyleSheet.create({
   },
 
   micButton: {
-    width: 140,
-    height: 140,
+    width: 126,
+    height: 126,
     borderRadius: 999,
-    backgroundColor: COLORS.accent,
+    backgroundColor: COLORS.primary,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 4,
-    borderColor: "rgba(255,255,255,0.55)",
+    borderColor: "rgba(255,255,255,0.66)",
     zIndex: 2,
     shadowColor: "#000",
-    shadowOpacity: 0.12,
-    shadowRadius: 18,
+    shadowOpacity: 0.14,
+    shadowRadius: 20,
     shadowOffset: { width: 0, height: 10 },
-    elevation: 6,
+    elevation: 7,
   },
 
   micButtonActive: {
-    backgroundColor: COLORS.accentDark,
-  },
-
-  micIcon: {
-    fontSize: 50,
+    backgroundColor: COLORS.primaryDark,
   },
 
   heroStatus: {
     color: COLORS.text,
-    fontSize: 21,
-    fontWeight: "900",
+    fontSize: 18,
+    fontWeight: "800",
     textAlign: "center",
     marginBottom: 8,
   },
 
   heroHint: {
     color: COLORS.textSoft,
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 14,
+    lineHeight: 21,
     textAlign: "center",
-    marginBottom: 18,
+    marginBottom: 20,
   },
 
   primaryBtn: {
-    minWidth: 180,
-    backgroundColor: COLORS.accent,
+    minWidth: 190,
+    backgroundColor: COLORS.primary,
     borderRadius: 18,
     paddingVertical: 15,
-    paddingHorizontal: 22,
+    paddingHorizontal: 24,
     alignItems: "center",
     justifyContent: "center",
   },
 
   primaryBtnText: {
-    color: "#FFF8F2",
-    fontWeight: "900",
+    color: COLORS.white,
+    fontWeight: "800",
     fontSize: 16,
   },
 
   quickCard: {
-    backgroundColor: COLORS.surfaceStrong,
-    borderRadius: 24,
+    backgroundColor: COLORS.card,
+    borderRadius: 26,
     borderWidth: 1,
-    borderColor: COLORS.line,
+    borderColor: COLORS.border,
     padding: 18,
     marginBottom: 16,
   },
 
   sectionTitle: {
     color: COLORS.text,
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: "900",
     marginBottom: 14,
   },
@@ -1324,50 +1381,72 @@ const styles = StyleSheet.create({
 
   quickItem: {
     flex: 1,
-    minHeight: 96,
-    backgroundColor: COLORS.surfaceSoft,
-    borderRadius: 18,
+    minHeight: 122,
+    backgroundColor: COLORS.cardSoft,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: COLORS.line,
+    borderColor: COLORS.border,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 10,
     paddingVertical: 14,
   },
 
-  quickIcon: {
-    fontSize: 28,
-    marginBottom: 8,
+  quickIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: COLORS.primarySoft,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
   },
 
   quickText: {
     color: COLORS.text,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "800",
     textAlign: "center",
   },
 
+  quickSubtext: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    marginTop: 4,
+    textAlign: "center",
+  },
+
   statusCard: {
-    backgroundColor: COLORS.statusBg,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.whiteSoft,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: COLORS.line,
+    borderColor: COLORS.border,
     paddingVertical: 12,
     paddingHorizontal: 14,
     marginBottom: 14,
   },
 
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 99,
+    backgroundColor: COLORS.primary,
+    marginRight: 10,
+  },
+
   statusText: {
+    flex: 1,
     color: COLORS.text,
-    textAlign: "center",
     fontWeight: "700",
   },
 
   choiceBox: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.card,
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: COLORS.line,
+    borderColor: COLORS.border,
     padding: 18,
     marginBottom: 16,
   },
@@ -1379,16 +1458,21 @@ const styles = StyleSheet.create({
   choiceCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: COLORS.surfaceSoft,
+    backgroundColor: COLORS.cardSoft,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: COLORS.line,
+    borderColor: COLORS.border,
     paddingVertical: 14,
     paddingHorizontal: 14,
   },
 
-  choiceIcon: {
-    fontSize: 24,
+  choiceIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: COLORS.primarySoft,
+    justifyContent: "center",
+    alignItems: "center",
     marginRight: 12,
   },
 
@@ -1400,17 +1484,20 @@ const styles = StyleSheet.create({
 
   secondaryBtn: {
     marginTop: 16,
-    backgroundColor: COLORS.accentSoft,
+    backgroundColor: COLORS.primarySoft,
     borderRadius: 16,
     paddingVertical: 14,
     alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
     borderWidth: 1,
-    borderColor: COLORS.lineStrong,
+    borderColor: COLORS.borderStrong,
   },
 
   secondaryBtnText: {
-    color: COLORS.accentDark,
-    fontWeight: "900",
+    color: COLORS.primaryDark,
+    fontWeight: "800",
     fontSize: 15,
   },
 
@@ -1422,8 +1509,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: COLORS.lineStrong,
-    backgroundColor: "rgba(255,255,255,0.30)",
+    borderColor: COLORS.borderStrong,
+    backgroundColor: "rgba(255,255,255,0.35)",
   },
 
   debugToggleText: {
@@ -1433,18 +1520,18 @@ const styles = StyleSheet.create({
   },
 
   debugCard: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.card,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: COLORS.line,
+    borderColor: COLORS.border,
     padding: 14,
     marginBottom: 14,
   },
 
   input: {
     width: "100%",
-    backgroundColor: COLORS.surfaceSoft,
-    borderColor: COLORS.line,
+    backgroundColor: COLORS.cardSoft,
+    borderColor: COLORS.border,
     borderWidth: 1,
     borderRadius: 14,
     paddingHorizontal: 14,
@@ -1455,8 +1542,8 @@ const styles = StyleSheet.create({
 
   debugBtn: {
     width: "100%",
-    backgroundColor: COLORS.accentSoft,
-    borderColor: COLORS.lineStrong,
+    backgroundColor: COLORS.primarySoft,
+    borderColor: COLORS.borderStrong,
     borderWidth: 1,
     borderRadius: 14,
     paddingVertical: 12,
@@ -1464,7 +1551,7 @@ const styles = StyleSheet.create({
   },
 
   debugText: {
-    color: COLORS.accentDark,
+    color: COLORS.primaryDark,
     fontWeight: "800",
   },
 
@@ -1475,7 +1562,7 @@ const styles = StyleSheet.create({
 
   langHeading: {
     color: COLORS.text,
-    marginTop: 12,
+    marginTop: 14,
     fontSize: 24,
     fontWeight: "900",
   },
@@ -1495,8 +1582,8 @@ const styles = StyleSheet.create({
   langCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: COLORS.surface,
-    borderColor: COLORS.line,
+    backgroundColor: COLORS.card,
+    borderColor: COLORS.border,
     borderWidth: 1,
     borderRadius: 22,
     paddingVertical: 18,
@@ -1507,14 +1594,10 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 18,
-    backgroundColor: COLORS.accentSoft,
+    backgroundColor: COLORS.primarySoft,
     alignItems: "center",
     justifyContent: "center",
     marginRight: 14,
-  },
-
-  langEmoji: {
-    fontSize: 22,
   },
 
   langTextBox: {
@@ -1546,8 +1629,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: COLORS.lineStrong,
-    backgroundColor: "rgba(255,255,255,0.35)",
+    borderColor: COLORS.borderStrong,
+    backgroundColor: "rgba(255,255,255,0.42)",
   },
 
   ghostBtnText: {

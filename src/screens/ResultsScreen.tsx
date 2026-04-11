@@ -15,6 +15,12 @@ import * as Speech from "expo-speech";
 import { Audio } from "expo-av";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import * as Location from "expo-location";
+import {
+  Feather,
+  Ionicons,
+  MaterialCommunityIcons,
+  FontAwesome5,
+} from "@expo/vector-icons";
 
 import { RootStackParamList } from "../../App";
 import {
@@ -283,21 +289,22 @@ function guessIntentFromText(text: string): AudioIntent {
 }
 
 const COLORS = {
-  bg: "#F4EDE1",
-  overlay: "rgba(244,237,225,0.56)",
-  surface: "rgba(255,250,243,0.80)",
-  surfaceStrong: "rgba(255,248,239,0.88)",
-  surfaceSoft: "rgba(255,255,255,0.44)",
-  line: "rgba(95,67,37,0.10)",
-  lineStrong: "rgba(95,67,37,0.18)",
-  text: "#2F2418",
-  textSoft: "#5E4B38",
-  textMuted: "#8E7760",
-  accent: "#B5622E",
-  accentDark: "#8E4A21",
-  accentSoft: "#EED7C2",
-  infoBg: "rgba(181,98,46,0.10)",
-  okBg: "rgba(255,250,243,0.74)",
+  bg: "#F5EFE6",
+  overlay: "rgba(245,239,230,0.93)",
+  card: "rgba(255,255,255,0.86)",
+  cardStrong: "#FFFDF9",
+  cardSoft: "rgba(255,255,255,0.58)",
+  border: "rgba(80,50,20,0.08)",
+  borderStrong: "rgba(80,50,20,0.16)",
+  text: "#2F241C",
+  textSoft: "#6B5B4D",
+  textMuted: "#8A796A",
+  primary: "#B96A32",
+  primaryDark: "#8F4D22",
+  primarySoft: "rgba(185,106,50,0.12)",
+  primaryUltraSoft: "rgba(185,106,50,0.06)",
+  white: "#FFFFFF",
+  whiteSoft: "rgba(255,255,255,0.80)",
   danger: "#B14A36",
   dangerBg: "rgba(177,74,54,0.10)",
 };
@@ -815,17 +822,38 @@ export default function ResultsScreen({ navigation, route }: Props) {
       ? "Restaurants"
       : "Pharmacies";
 
-  const renderItem = ({ item, index }: { item: ResultItem; index: number }) => {
-    const distanceLine =
-      item.distance_km != null
-        ? `${item.distance_km} km`
-        : hasCoords
-        ? "Distance..."
-        : "Sans distance";
+  const pageSubtitle = hasCoords
+    ? "Classés autour de toi"
+    : district
+    ? `Zone : ${district}`
+    : "Recherche générale";
 
-    const locality =
-      [item.district || null, item.city || null].filter(Boolean).join(", ") ||
-      "Localisation non précisée";
+  const queryLabel = queryText?.trim()
+    ? `Recherche vocale : ${queryText}`
+    : `Recherche vocale : ${pageTitle.toLowerCase()}`;
+
+  const getLocalityText = (item: ResultItem) => {
+    const locality = [item.district || null, item.city || null].filter(Boolean).join(", ");
+    if (locality) return locality;
+
+    if (item.distance_km != null) {
+      if (Number(item.distance_km) < 1) {
+        return `À ${Math.round(Number(item.distance_km) * 1000)} m de toi`;
+      }
+      return `À ${item.distance_km} km de toi`;
+    }
+
+    return "Proche de toi";
+  };
+
+  const getDistanceText = (item: ResultItem) => {
+    if (item.distance_km != null) return `${item.distance_km} km`;
+    return hasCoords ? "Distance en cours" : "Sans distance";
+  };
+
+  const renderItem = ({ item, index }: { item: ResultItem; index: number }) => {
+    const localityText = getLocalityText(item);
+    const distanceText = getDistanceText(item);
 
     return (
       <Pressable onPress={() => speakNameOnly(item.name)} style={styles.card}>
@@ -837,7 +865,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
 
             <View style={styles.titleTextWrap}>
               <Text style={styles.cardTitle}>{item.name}</Text>
-              <Text style={styles.cardMeta}>{locality}</Text>
+              <Text style={styles.cardMeta}>{localityText}</Text>
             </View>
           </View>
 
@@ -848,13 +876,14 @@ export default function ResultsScreen({ navigation, route }: Props) {
             }}
             style={styles.mapBtn}
           >
-            <Text style={styles.mapBtnText}>🗺️</Text>
+            <Ionicons name="navigate-outline" size={19} color={COLORS.primaryDark} />
           </Pressable>
         </View>
 
         <View style={styles.infoRow}>
           <View style={styles.infoPill}>
-            <Text style={styles.infoPillText}>📍 {distanceLine}</Text>
+            <Ionicons name="location-outline" size={14} color={COLORS.primaryDark} />
+            <Text style={styles.infoPillText}>{distanceText}</Text>
           </View>
 
           {item.type ? (
@@ -864,7 +893,17 @@ export default function ResultsScreen({ navigation, route }: Props) {
           ) : null}
         </View>
 
-        {item.phone ? <Text style={styles.cardSub}>📞 {item.phone}</Text> : null}
+        {item.phone ? (
+          <View style={styles.phoneRow}>
+            <Feather name="phone" size={15} color={COLORS.textSoft} />
+            <Text style={styles.cardSub}>{item.phone}</Text>
+          </View>
+        ) : (
+          <View style={styles.phoneRow}>
+            <Feather name="phone-off" size={15} color={COLORS.textMuted} />
+            <Text style={styles.cardSubMuted}>Téléphone indisponible</Text>
+          </View>
+        )}
 
         <View style={styles.actionRow}>
           {item.phone ? (
@@ -875,11 +914,12 @@ export default function ResultsScreen({ navigation, route }: Props) {
               }}
               style={styles.callBtn}
             >
+              <Feather name="phone-call" size={15} color={COLORS.white} />
               <Text style={styles.callText}>Appeler</Text>
             </Pressable>
           ) : (
             <View style={styles.callBtnDisabled}>
-              <Text style={styles.callTextDisabled}>Téléphone indisponible</Text>
+              <Text style={styles.callTextDisabled}>Indisponible</Text>
             </View>
           )}
 
@@ -890,6 +930,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
             }}
             style={styles.routeBtn}
           >
+            <Ionicons name="navigate" size={15} color={COLORS.text} />
             <Text style={styles.routeBtnText}>Itinéraire</Text>
           </Pressable>
         </View>
@@ -902,6 +943,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
       source={require("../assets/mouledi-bg.png")}
       style={styles.background}
       resizeMode="cover"
+      imageStyle={styles.bgImage}
     >
       <View style={styles.overlay} />
       <SafeAreaView style={styles.safeArea}>
@@ -915,19 +957,13 @@ export default function ResultsScreen({ navigation, route }: Props) {
                 }}
                 style={styles.backBtn}
               >
-                <Text style={styles.backText}>←</Text>
+                <Feather name="arrow-left" size={20} color={COLORS.text} />
               </Pressable>
 
               <View style={styles.heroTextWrap}>
                 <Text style={styles.heroEyebrow}>Résultats</Text>
                 <Text style={styles.heroTitle}>{pageTitle}</Text>
-                <Text style={styles.heroSubtitle}>
-                  {hasCoords
-                    ? "Classés autour de toi"
-                    : district
-                    ? `Zone : ${district}`
-                    : "Recherche générale"}
-                </Text>
+                <Text style={styles.heroSubtitle}>{pageSubtitle}</Text>
               </View>
 
               <Animated.View style={{ transform: [{ scale: pulse }] }}>
@@ -949,18 +985,28 @@ export default function ResultsScreen({ navigation, route }: Props) {
                   }}
                   style={[styles.heroMicBtn, isListening ? styles.heroMicBtnActive : null]}
                 >
-                  <Text style={styles.heroMicText}>{isListening ? "⏹️" : "🎙️"}</Text>
+                  {isListening ? (
+                    <Ionicons name="stop" size={20} color={COLORS.primaryDark} />
+                  ) : (
+                    <MaterialCommunityIcons
+                      name="microphone"
+                      size={22}
+                      color={COLORS.primaryDark}
+                    />
+                  )}
                 </Pressable>
               </Animated.View>
             </View>
 
             <View style={styles.queryPill}>
-              <Text style={styles.queryPillText}>{queryText}</Text>
+              <Feather name="search" size={16} color={COLORS.textMuted} />
+              <Text style={styles.queryPillText}>{queryLabel}</Text>
             </View>
           </View>
 
           {statusText ? (
             <View style={styles.statusCard}>
+              <View style={styles.statusDot} />
               <Text style={styles.status}>{statusText}</Text>
             </View>
           ) : null}
@@ -975,6 +1021,7 @@ export default function ResultsScreen({ navigation, route }: Props) {
               </View>
 
               <Pressable onPress={requestGeoAndReload} style={styles.geoBtn}>
+                <Ionicons name="location-outline" size={16} color={COLORS.white} />
                 <Text style={styles.geoBtnText}>Activer</Text>
               </Pressable>
             </View>
@@ -1018,6 +1065,11 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bg,
   },
 
+  bgImage: {
+    opacity: 0.08,
+    transform: [{ scale: 1.08 }],
+  },
+
   overlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: COLORS.overlay,
@@ -1029,17 +1081,22 @@ const styles = StyleSheet.create({
 
   container: {
     flex: 1,
-    paddingHorizontal: 18,
-    paddingTop: 8,
+    paddingHorizontal: 20,
+    paddingTop: 10,
   },
 
   heroCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 28,
+    backgroundColor: COLORS.card,
+    borderRadius: 30,
     borderWidth: 1,
-    borderColor: COLORS.line,
+    borderColor: COLORS.border,
     padding: 18,
     marginBottom: 14,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 5,
   },
 
   heroTopRow: {
@@ -1053,10 +1110,10 @@ const styles = StyleSheet.create({
   },
 
   heroEyebrow: {
-    color: COLORS.accent,
+    color: COLORS.primary,
     fontSize: 12,
     fontWeight: "800",
-    letterSpacing: 0.8,
+    letterSpacing: 1,
     textTransform: "uppercase",
     marginBottom: 5,
   },
@@ -1077,78 +1134,81 @@ const styles = StyleSheet.create({
 
   queryPill: {
     marginTop: 16,
-    backgroundColor: COLORS.surfaceSoft,
-    borderRadius: 16,
+    backgroundColor: COLORS.cardSoft,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: COLORS.line,
-    paddingVertical: 11,
+    borderColor: COLORS.border,
+    paddingVertical: 13,
     paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
   },
 
   queryPillText: {
     color: COLORS.textSoft,
-    fontSize: 13,
+    fontSize: 14,
+    marginLeft: 10,
+    flex: 1,
   },
 
   backBtn: {
     width: 48,
     height: 48,
     borderRadius: 16,
-    backgroundColor: COLORS.surfaceStrong,
+    backgroundColor: COLORS.cardStrong,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: COLORS.line,
-  },
-
-  backText: {
-    color: COLORS.text,
-    fontSize: 21,
-    fontWeight: "800",
+    borderColor: COLORS.border,
   },
 
   heroMicBtn: {
     width: 54,
     height: 54,
     borderRadius: 18,
-    backgroundColor: COLORS.accentSoft,
+    backgroundColor: COLORS.primarySoft,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: COLORS.line,
+    borderColor: COLORS.border,
   },
 
   heroMicBtnActive: {
-    borderColor: COLORS.lineStrong,
-    backgroundColor: "#E7C8AF",
-  },
-
-  heroMicText: {
-    color: COLORS.text,
-    fontSize: 21,
+    borderColor: COLORS.borderStrong,
+    backgroundColor: "rgba(185,106,50,0.18)",
   },
 
   statusCard: {
-    backgroundColor: COLORS.okBg,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.whiteSoft,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: COLORS.line,
+    borderColor: COLORS.border,
     paddingVertical: 11,
     paddingHorizontal: 14,
     marginBottom: 12,
   },
 
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 99,
+    backgroundColor: COLORS.primary,
+    marginRight: 10,
+  },
+
   status: {
+    flex: 1,
     color: COLORS.text,
-    textAlign: "center",
     fontWeight: "700",
   },
 
   geoBox: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 22,
+    backgroundColor: COLORS.card,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: COLORS.line,
+    borderColor: COLORS.border,
     padding: 16,
     marginBottom: 14,
   },
@@ -1171,23 +1231,26 @@ const styles = StyleSheet.create({
   },
 
   geoBtn: {
-    backgroundColor: COLORS.accent,
+    backgroundColor: COLORS.primary,
     borderRadius: 16,
     paddingVertical: 13,
     alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
   },
 
   geoBtnText: {
-    color: "#FFF8F2",
-    fontWeight: "900",
+    color: COLORS.white,
+    fontWeight: "800",
     fontSize: 14,
   },
 
   feedbackBox: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.card,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: COLORS.line,
+    borderColor: COLORS.border,
     padding: 18,
     marginTop: 4,
   },
@@ -1217,12 +1280,17 @@ const styles = StyleSheet.create({
   },
 
   card: {
-    backgroundColor: COLORS.surface,
-    borderColor: COLORS.line,
+    backgroundColor: COLORS.card,
+    borderColor: COLORS.border,
     borderWidth: 1,
-    borderRadius: 24,
+    borderRadius: 26,
     padding: 18,
     marginBottom: 14,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
   },
 
   cardTopRow: {
@@ -1243,83 +1311,81 @@ const styles = StyleSheet.create({
   },
 
   indexBadge: {
-    minWidth: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: COLORS.accentSoft,
+    minWidth: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.primarySoft,
     borderWidth: 1,
-    borderColor: COLORS.line,
+    borderColor: COLORS.border,
     alignItems: "center",
     justifyContent: "center",
     marginTop: 1,
-    marginRight: 10,
+    marginRight: 12,
   },
 
   indexBadgeText: {
-    color: COLORS.accentDark,
-    fontSize: 13,
+    color: COLORS.primaryDark,
+    fontSize: 14,
     fontWeight: "900",
   },
 
   cardTitle: {
     color: COLORS.text,
-    fontSize: 17,
-    fontWeight: "800",
-    lineHeight: 22,
+    fontSize: 20,
+    fontWeight: "900",
+    lineHeight: 25,
     marginBottom: 5,
   },
 
   cardMeta: {
     color: COLORS.textSoft,
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 14,
+    lineHeight: 19,
   },
 
   mapBtn: {
     width: 46,
     height: 46,
     borderRadius: 16,
-    backgroundColor: COLORS.surfaceStrong,
+    backgroundColor: COLORS.cardStrong,
     borderWidth: 1,
-    borderColor: COLORS.line,
+    borderColor: COLORS.border,
     alignItems: "center",
     justifyContent: "center",
-  },
-
-  mapBtnText: {
-    fontSize: 18,
-    color: COLORS.text,
   },
 
   infoRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
-    marginTop: 13,
+    marginTop: 14,
   },
 
   infoPill: {
-    backgroundColor: COLORS.infoBg,
+    backgroundColor: COLORS.primaryUltraSoft,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderWidth: 1,
-    borderColor: COLORS.line,
+    borderColor: COLORS.border,
+    flexDirection: "row",
+    alignItems: "center",
   },
 
   infoPillText: {
     color: COLORS.text,
     fontSize: 12,
     fontWeight: "700",
+    marginLeft: 6,
   },
 
   infoPillMuted: {
-    backgroundColor: COLORS.surfaceSoft,
+    backgroundColor: COLORS.cardSoft,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderWidth: 1,
-    borderColor: COLORS.line,
+    borderColor: COLORS.border,
   },
 
   infoPillMutedText: {
@@ -1328,40 +1394,56 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
+  phoneRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 13,
+  },
+
   cardSub: {
     color: COLORS.textSoft,
-    marginTop: 12,
+    marginLeft: 8,
+    fontSize: 14,
+  },
+
+  cardSubMuted: {
+    color: COLORS.textMuted,
+    marginLeft: 8,
     fontSize: 14,
   },
 
   actionRow: {
     flexDirection: "row",
     gap: 10,
-    marginTop: 15,
+    marginTop: 16,
   },
 
   callBtn: {
     flex: 1,
-    backgroundColor: COLORS.accent,
-    borderRadius: 16,
+    backgroundColor: COLORS.primary,
+    borderRadius: 18,
     paddingVertical: 14,
     alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
   },
 
   callText: {
-    color: "#FFF8F2",
-    fontWeight: "900",
+    color: COLORS.white,
+    fontWeight: "800",
     fontSize: 14,
   },
 
   callBtnDisabled: {
     flex: 1,
-    backgroundColor: COLORS.surfaceSoft,
-    borderRadius: 16,
+    backgroundColor: COLORS.cardSoft,
+    borderRadius: 18,
     paddingVertical: 14,
     alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
-    borderColor: COLORS.line,
+    borderColor: COLORS.border,
   },
 
   callTextDisabled: {
@@ -1372,12 +1454,15 @@ const styles = StyleSheet.create({
 
   routeBtn: {
     flex: 1,
-    backgroundColor: COLORS.surfaceStrong,
-    borderRadius: 16,
+    backgroundColor: COLORS.cardStrong,
+    borderRadius: 18,
     paddingVertical: 14,
     alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
-    borderColor: COLORS.line,
+    borderColor: COLORS.border,
+    flexDirection: "row",
+    gap: 8,
   },
 
   routeBtnText: {
