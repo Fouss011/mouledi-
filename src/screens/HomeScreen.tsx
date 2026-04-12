@@ -1040,7 +1040,7 @@ export default function HomeScreen({ navigation, route }: Props) {
                     ) : (
                       <MaterialCommunityIcons
                         name="microphone"
-                        size={50}
+                        size={54}
                         color={COLORS.white}
                       />
                     )}
@@ -1061,56 +1061,64 @@ export default function HomeScreen({ navigation, route }: Props) {
             </View>
 
             <View style={styles.quickCard}>
-              <Text style={styles.sectionTitle}>Démarches administratives</Text>
+  <Text style={styles.sectionTitle}>Démarches utiles</Text>
 
-              <View style={styles.quickGridTwoRows}>
-                <Pressable style={styles.quickItem} onPress={openPassportGuide}>
-                  <View style={styles.quickIconWrap}>
-                    <MaterialCommunityIcons
-                      name="passport"
-                      size={22}
-                      color={COLORS.primaryDark}
-                    />
-                  </View>
-                  <Text style={styles.quickText}>Passeport</Text>
-                  <Text style={styles.quickSubtext}>Guide pratique</Text>
-                </Pressable>
+  <View style={styles.quickGridTwoRows}>
+    <Pressable style={styles.quickItem} onPress={openPassportGuide}>
+      <View style={styles.quickIconWrap}>
+        <MaterialCommunityIcons
+          name="passport"
+          size={20}
+          color={COLORS.primaryDark}
+        />
+      </View>
+      <Text style={styles.quickText}>Passeport</Text>
+      <Text style={styles.quickSubtext}>Guide pratique</Text>
+    </Pressable>
 
-                <Pressable style={styles.quickItem} onPress={openCniGuide}>
-                  <View style={styles.quickIconWrap}>
-                    <MaterialCommunityIcons
-                      name="card-account-details-outline"
-                      size={22}
-                      color={COLORS.primaryDark}
-                    />
-                  </View>
-                  <Text style={styles.quickText}>Carte d’identité</Text>
-                  <Text style={styles.quickSubtext}>Documents utiles</Text>
-                </Pressable>
+    <Pressable style={styles.quickItem} onPress={openCniGuide}>
+      <View style={styles.quickIconWrap}>
+        <MaterialCommunityIcons
+          name="card-account-details-outline"
+          size={20}
+          color={COLORS.primaryDark}
+        />
+      </View>
+      <Text style={styles.quickText}>Carte d’identité</Text>
+      <Text style={styles.quickSubtext}>Documents utiles</Text>
+    </Pressable>
 
-                <Pressable
-                  style={[styles.quickItem, styles.quickItemDisabled]}
-                  onPress={() => openSoonGuide("Acte de naissance")}
-                >
-                  <View style={styles.quickIconWrap}>
-                    <Ionicons name="document-text-outline" size={22} color={COLORS.primaryDark} />
-                  </View>
-                  <Text style={styles.quickText}>Acte de naissance</Text>
-                  <Text style={styles.quickSubtext}>Bientôt disponible</Text>
-                </Pressable>
+    <Pressable
+      style={[styles.quickItem, styles.quickItemDisabled]}
+      onPress={() => openSoonGuide("Acte de naissance")}
+    >
+      <View style={styles.quickIconWrap}>
+        <Ionicons
+          name="document-text-outline"
+          size={20}
+          color={COLORS.primaryDark}
+        />
+      </View>
+      <Text style={styles.quickText}>Acte de naissance</Text>
+      <Text style={styles.quickSubtext}>Bientôt disponible</Text>
+    </Pressable>
 
-                <Pressable
-                  style={[styles.quickItem, styles.quickItemDisabled]}
-                  onPress={() => openSoonGuide("Certificat de nationalité")}
-                >
-                  <View style={styles.quickIconWrap}>
-                    <Feather name="file-text" size={20} color={COLORS.primaryDark} />
-                  </View>
-                  <Text style={styles.quickText}>Certificat de nationalité</Text>
-                  <Text style={styles.quickSubtext}>Bientôt disponible</Text>
-                </Pressable>
-              </View>
-            </View>
+    <Pressable
+      style={[styles.quickItem, styles.quickItemDisabled]}
+      onPress={() => openSoonGuide("Certificat de nationalité")}
+    >
+      <View style={styles.quickIconWrap}>
+        <Feather
+          name="file-text"
+          size={20}
+          color={COLORS.primaryDark}
+        />
+      </View>
+      <Text style={styles.quickText}>Certificat de nationalité</Text>
+      <Text style={styles.quickSubtext}>Bientôt disponible</Text>
+    </Pressable>
+  </View>
+</View>
 
             <View style={styles.quickCard}>
               <Text style={styles.sectionTitle}>Services à proximité</Text>
@@ -1320,20 +1328,20 @@ const styles = StyleSheet.create({
   },
 
   heroCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 30,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingVertical: 24,
-    paddingHorizontal: 20,
-    marginBottom: 16,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 5,
-  },
+  backgroundColor: COLORS.card,
+  borderRadius: 30,
+  borderWidth: 1,
+  borderColor: COLORS.border,
+  paddingVertical: 28,
+  paddingHorizontal: 20,
+  marginBottom: 16,
+  alignItems: "center",
+  shadowColor: "#000",
+  shadowOpacity: 0.08,
+  shadowRadius: 18,
+  shadowOffset: { width: 0, height: 10 },
+  elevation: 5,
+},
 
   heroEyebrow: {
     color: COLORS.primaryDark,
@@ -1345,32 +1353,32 @@ const styles = StyleSheet.create({
   },
 
   micZone: {
-    width: "100%",
-    minHeight: 210,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 10,
-  },
+  width: "100%",
+  minHeight: 235,
+  alignItems: "center",
+  justifyContent: "center",
+  marginBottom: 12,
+},
 
   micHaloOuter: {
-    position: "absolute",
-    width: 190,
-    height: 190,
-    borderRadius: 999,
-    backgroundColor: COLORS.primaryUltraSoft,
-    borderWidth: 1,
-    borderColor: "rgba(185,106,50,0.10)",
-  },
+  position: "absolute",
+  width: 204,
+  height: 204,
+  borderRadius: 999,
+  backgroundColor: COLORS.primaryUltraSoft,
+  borderWidth: 1,
+  borderColor: "rgba(185,106,50,0.10)",
+},
 
   micHaloInner: {
-    position: "absolute",
-    width: 156,
-    height: 156,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.46)",
-    borderWidth: 1,
-    borderColor: "rgba(185,106,50,0.08)",
-  },
+  position: "absolute",
+  width: 166,
+  height: 166,
+  borderRadius: 999,
+  backgroundColor: "rgba(255,255,255,0.46)",
+  borderWidth: 1,
+  borderColor: "rgba(185,106,50,0.08)",
+},
 
   micButtonWrap: {
     alignItems: "center",
@@ -1378,33 +1386,33 @@ const styles = StyleSheet.create({
   },
 
   micButton: {
-    width: 126,
-    height: 126,
-    borderRadius: 999,
-    backgroundColor: COLORS.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 4,
-    borderColor: "rgba(255,255,255,0.66)",
-    zIndex: 2,
-    shadowColor: "#000",
-    shadowOpacity: 0.14,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 7,
-  },
+  width: 136,
+  height: 136,
+  borderRadius: 999,
+  backgroundColor: COLORS.primary,
+  alignItems: "center",
+  justifyContent: "center",
+  borderWidth: 4,
+  borderColor: "rgba(255,255,255,0.66)",
+  zIndex: 2,
+  shadowColor: "#000",
+  shadowOpacity: 0.14,
+  shadowRadius: 20,
+  shadowOffset: { width: 0, height: 10 },
+  elevation: 7,
+},
 
   micButtonActive: {
     backgroundColor: COLORS.primaryDark,
   },
 
   heroStatus: {
-    color: COLORS.text,
-    fontSize: 18,
-    fontWeight: "800",
-    textAlign: "center",
-    marginBottom: 8,
-  },
+  color: COLORS.text,
+  fontSize: 19,
+  fontWeight: "800",
+  textAlign: "center",
+  marginBottom: 8,
+},
 
   heroHint: {
     color: COLORS.textSoft,
@@ -1431,20 +1439,20 @@ const styles = StyleSheet.create({
   },
 
   quickCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 26,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 18,
-    marginBottom: 16,
-  },
+  backgroundColor: COLORS.card,
+  borderRadius: 24,
+  borderWidth: 1,
+  borderColor: COLORS.border,
+  padding: 16,
+  marginBottom: 14,
+},
 
   sectionTitle: {
-    color: COLORS.text,
-    fontSize: 22,
-    fontWeight: "900",
-    marginBottom: 14,
-  },
+  color: COLORS.text,
+  fontSize: 20,
+  fontWeight: "900",
+  marginBottom: 14,
+},
 
   quickGrid: {
     flexDirection: "row",
@@ -1453,52 +1461,57 @@ const styles = StyleSheet.create({
   },
 
   quickGridTwoRows: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    gap: 10,
-  },
+  flexDirection: "row",
+  flexWrap: "wrap",
+  justifyContent: "space-between",
+  rowGap: 12,
+  columnGap: 10,
+},
 
   quickItem: {
-    flex: 1,
-    minHeight: 122,
-    backgroundColor: COLORS.cardSoft,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 10,
-    paddingVertical: 14,
-  },
+  width: "48%",
+  minHeight: 148,
+  backgroundColor: COLORS.cardSoft,
+  borderRadius: 20,
+  borderWidth: 1,
+  borderColor: COLORS.border,
+  alignItems: "center",
+  justifyContent: "flex-start",
+  paddingHorizontal: 12,
+  paddingVertical: 16,
+},
 
   quickItemDisabled: {
     backgroundColor: COLORS.disabledBg,
   },
 
   quickIconWrap: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
-    backgroundColor: COLORS.primarySoft,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 12,
-  },
+  width: 56,
+  height: 56,
+  borderRadius: 16,
+  backgroundColor: COLORS.primarySoft,
+  alignItems: "center",
+  justifyContent: "center",
+  marginBottom: 12,
+},
 
   quickText: {
-    color: COLORS.text,
-    fontSize: 15,
-    fontWeight: "800",
-    textAlign: "center",
-  },
+  color: COLORS.text,
+  fontSize: 15,
+  fontWeight: "800",
+  textAlign: "center",
+  lineHeight: 20,
+  minHeight: 40,
+},
 
   quickSubtext: {
-    color: COLORS.textMuted,
-    fontSize: 12,
-    marginTop: 4,
-    textAlign: "center",
-  },
+  color: COLORS.textMuted,
+  fontSize: 12,
+  marginTop: 6,
+  textAlign: "center",
+  lineHeight: 16,
+  minHeight: 32,
+},
 
   statusCard: {
     flexDirection: "row",
