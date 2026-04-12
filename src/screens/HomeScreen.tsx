@@ -1179,7 +1179,12 @@ export default function HomeScreen({ navigation, route }: Props) {
               <Text style={styles.sectionTitle}>Services à proximité</Text>
 
               <View style={styles.quickGrid}>
-                <Pressable style={styles.quickItem} onPress={openPharmacies}>
+                <Pressable
+  style={styles.quickItem}
+  onPress={() =>
+    handleShortcutPress("pharmacy", "Pharmacie", openPharmacies)
+  }
+>
                   <View style={styles.quickIconWrap}>
                     <FontAwesome5 name="pills" size={18} color={COLORS.primaryDark} />
                   </View>
@@ -1187,7 +1192,12 @@ export default function HomeScreen({ navigation, route }: Props) {
                   <Text style={styles.quickSubtext}>À proximité</Text>
                 </Pressable>
 
-                <Pressable style={styles.quickItem} onPress={openClinics}>
+                <Pressable
+  style={styles.quickItem}
+  onPress={() =>
+    handleShortcutPress("clinic", "Clinique", openClinics)
+  }
+>
                   <View style={styles.quickIconWrap}>
                     <MaterialCommunityIcons
                       name="hospital-building"
@@ -1199,7 +1209,12 @@ export default function HomeScreen({ navigation, route }: Props) {
                   <Text style={styles.quickSubtext}>Autour de toi</Text>
                 </Pressable>
 
-                <Pressable style={styles.quickItem} onPress={openRestaurants}>
+                <Pressable
+  style={styles.quickItem}
+  onPress={() =>
+    handleShortcutPress("restaurant", "Restaurant", openRestaurants)
+  }
+>
                   <View style={styles.quickIconWrap}>
                     <MaterialCommunityIcons
                       name="silverware-fork-knife"
