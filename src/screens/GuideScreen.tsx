@@ -15,7 +15,12 @@ import { ADMIN_GUIDES, GuideLanguage } from "../data/adminGuides";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Guide">;
 
-type GuideKey = "passport" | "cni" | "casier";
+type GuideKey =
+  | "passport"
+  | "cni"
+  | "casier"
+  | "birth_certificate"
+  | "nationality_certificate";
 
 const COLORS = {
   bg: "#F5EFE6",
@@ -44,14 +49,18 @@ export default function GuideScreen({ navigation, route }: Props) {
     rawLang === "fr" || rawLang === "mina" || rawLang === "kabyè" ? rawLang : "fr";
 
   const guideKey: GuideKey =
-    rawGuideKey === "passport" || rawGuideKey === "cni" || rawGuideKey === "casier"
+    rawGuideKey === "passport" ||
+    rawGuideKey === "cni" ||
+    rawGuideKey === "casier" ||
+    rawGuideKey === "birth_certificate" ||
+    rawGuideKey === "nationality_certificate"
       ? rawGuideKey
       : "passport";
 
   const guide =
     ADMIN_GUIDES?.[lang]?.[guideKey] ??
     ADMIN_GUIDES?.fr?.[guideKey] ??
-    ADMIN_GUIDES.fr.passport;
+    ADMIN_GUIDES?.fr?.passport;
 
   const langLabel =
     lang === "fr" ? "Français" : lang === "mina" ? "Mina" : "Kabyè";

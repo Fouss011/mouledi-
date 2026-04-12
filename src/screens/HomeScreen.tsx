@@ -313,6 +313,7 @@ const COLORS = {
   shadow: "rgba(0,0,0,0.08)",
   white: "#FFFFFF",
   whiteSoft: "rgba(255,255,255,0.78)",
+  disabledBg: "rgba(255,255,255,0.45)",
 };
 
 export default function HomeScreen({ navigation, route }: Props) {
@@ -628,6 +629,27 @@ export default function HomeScreen({ navigation, route }: Props) {
     });
   };
 
+  const openPassportGuide = async () => {
+    await stopAllAudio();
+    navigation.navigate("Guide", {
+      guideKey: "passport",
+      lang: selectedLang === "mute" ? "fr" : selectedLang,
+    });
+  };
+
+  const openCniGuide = async () => {
+    await stopAllAudio();
+    navigation.navigate("Guide", {
+      guideKey: "cni",
+      lang: selectedLang === "mute" ? "fr" : selectedLang,
+    });
+  };
+
+  const openSoonGuide = async (label: string) => {
+    await stopAllAudio();
+    setStatusText(`${label} bientôt disponible`);
+  };
+
   const stopRecordingAndProcess = async (rec: Audio.Recording) => {
     setStatusText("Traitement...");
     await rec.stopAndUnloadAsync();
@@ -857,7 +879,6 @@ export default function HomeScreen({ navigation, route }: Props) {
   };
 
   const statusLabel = getStatusLabel(statusText, isListening);
-
   const showDebugToggle = __DEV__;
 
   if (showLangPicker) {
@@ -1040,7 +1061,59 @@ export default function HomeScreen({ navigation, route }: Props) {
             </View>
 
             <View style={styles.quickCard}>
-              <Text style={styles.sectionTitle}>Accès rapide</Text>
+              <Text style={styles.sectionTitle}>Démarches administratives</Text>
+
+              <View style={styles.quickGridTwoRows}>
+                <Pressable style={styles.quickItem} onPress={openPassportGuide}>
+                  <View style={styles.quickIconWrap}>
+                    <MaterialCommunityIcons
+                      name="passport"
+                      size={22}
+                      color={COLORS.primaryDark}
+                    />
+                  </View>
+                  <Text style={styles.quickText}>Passeport</Text>
+                  <Text style={styles.quickSubtext}>Guide pratique</Text>
+                </Pressable>
+
+                <Pressable style={styles.quickItem} onPress={openCniGuide}>
+                  <View style={styles.quickIconWrap}>
+                    <MaterialCommunityIcons
+                      name="card-account-details-outline"
+                      size={22}
+                      color={COLORS.primaryDark}
+                    />
+                  </View>
+                  <Text style={styles.quickText}>Carte d’identité</Text>
+                  <Text style={styles.quickSubtext}>Documents utiles</Text>
+                </Pressable>
+
+                <Pressable
+                  style={[styles.quickItem, styles.quickItemDisabled]}
+                  onPress={() => openSoonGuide("Acte de naissance")}
+                >
+                  <View style={styles.quickIconWrap}>
+                    <Ionicons name="document-text-outline" size={22} color={COLORS.primaryDark} />
+                  </View>
+                  <Text style={styles.quickText}>Acte de naissance</Text>
+                  <Text style={styles.quickSubtext}>Bientôt disponible</Text>
+                </Pressable>
+
+                <Pressable
+                  style={[styles.quickItem, styles.quickItemDisabled]}
+                  onPress={() => openSoonGuide("Certificat de nationalité")}
+                >
+                  <View style={styles.quickIconWrap}>
+                    <Feather name="file-text" size={20} color={COLORS.primaryDark} />
+                  </View>
+                  <Text style={styles.quickText}>Certificat de nationalité</Text>
+                  <Text style={styles.quickSubtext}>Bientôt disponible</Text>
+                </Pressable>
+              </View>
+            </View>
+
+            <View style={styles.quickCard}>
+              <Text style={styles.sectionTitle}>Services à proximité</Text>
 
               <View style={styles.quickGrid}>
                 <Pressable style={styles.quickItem} onPress={openPharmacies}>
@@ -1379,6 +1452,13 @@ const styles = StyleSheet.create({
     gap: 10,
   },
 
+  quickGridTwoRows: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+
   quickItem: {
     flex: 1,
     minHeight: 122,
@@ -1390,6 +1470,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 10,
     paddingVertical: 14,
+  },
+
+  quickItemDisabled: {
+    backgroundColor: COLORS.disabledBg,
   },
 
   quickIconWrap: {
