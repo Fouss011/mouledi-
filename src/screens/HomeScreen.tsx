@@ -330,6 +330,7 @@ export default function HomeScreen({ navigation, route }: Props) {
   const [hasPlayedWelcome, setHasPlayedWelcome] = useState<boolean>(false);
   const [titleTapCount, setTitleTapCount] = useState<number>(0);
   const [showHiddenAccess, setShowHiddenAccess] = useState<boolean>(false);
+  const [lastShortcutTouched, setLastShortcutTouched] = useState<string | null>(null);
 
   const isListening = useMemo(() => recording != null || webRec != null, [recording, webRec]);
 
@@ -628,6 +629,40 @@ export default function HomeScreen({ navigation, route }: Props) {
       nearLng,
     });
   };
+
+  const handleShortcutPress = async (
+  key: string,
+  label: string,
+  action: () => Promise<void> | void
+) => {
+  if (lastShortcutTouched !== key) {
+    setLastShortcutTouched(key);
+
+    try {
+      const utterance =
+        Platform.OS === "web"
+          ? new SpeechSynthesisUtterance(label)
+          : null;
+
+      if (utterance && typeof window !== "undefined" && window.speechSynthesis) {
+        utterance.lang = "fr-FR";
+        utterance.rate = 0.92;
+        utterance.pitch = 1;
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(utterance);
+      }
+    } catch {}
+
+    setTimeout(() => {
+      setLastShortcutTouched((prev) => (prev === key ? null : prev));
+    }, 3000);
+
+    return;
+  }
+
+  setLastShortcutTouched(null);
+  await action();
+};
 
   const openPassportGuide = async () => {
     await stopAllAudio();
@@ -1064,7 +1099,9 @@ export default function HomeScreen({ navigation, route }: Props) {
   <Text style={styles.sectionTitle}>Démarches utiles</Text>
 
   <View style={styles.quickGridTwoRows}>
-    <Pressable style={styles.quickItem} onPress={openPassportGuide}>
+    <Pressable style={styles.quickItem} onPress={() =>
+  handleShortcutPress("passport", "Passeport", openPassportGuide)
+}>
       <View style={styles.quickIconWrap}>
         <MaterialCommunityIcons
           name="passport"
@@ -1076,7 +1113,13 @@ export default function HomeScreen({ navigation, route }: Props) {
       <Text style={styles.quickSubtext}>Guide pratique</Text>
     </Pressable>
 
-    <Pressable style={styles.quickItem} onPress={openCniGuide}>
+    <Pressable style={styles.quickItem} onPress={() =>
+  handleShortcutPress(
+    "cni",
+    "Carte d'identité",
+    openCniGuide
+  )
+}>
       <View style={styles.quickIconWrap}>
         <MaterialCommunityIcons
           name="card-account-details-outline"
@@ -1090,7 +1133,13 @@ export default function HomeScreen({ navigation, route }: Props) {
 
     <Pressable
       style={[styles.quickItem, styles.quickItemDisabled]}
-      onPress={() => openSoonGuide("Acte de naissance")}
+      onPress={() =>
+  handleShortcutPress(
+    "birth",
+    "Acte de naissance",
+    () => openSoonGuide("Acte de naissance")
+  )
+}
     >
       <View style={styles.quickIconWrap}>
         <Ionicons
@@ -1105,7 +1154,13 @@ export default function HomeScreen({ navigation, route }: Props) {
 
     <Pressable
       style={[styles.quickItem, styles.quickItemDisabled]}
-      onPress={() => openSoonGuide("Certificat de nationalité")}
+      onPress={() =>
+  handleShortcutPress(
+    "nationality",
+    "Certificat de nationalité",
+    () => openSoonGuide("Certificat de nationalité")
+  )
+}
     >
       <View style={styles.quickIconWrap}>
         <Feather
