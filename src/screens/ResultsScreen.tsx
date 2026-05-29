@@ -10,6 +10,7 @@ import {
   Animated,
   ImageBackground,
   SafeAreaView,
+  StatusBar,
 } from "react-native";
 import * as Speech from "expo-speech";
 import { Audio } from "expo-av";
@@ -1076,21 +1077,22 @@ const styles = StyleSheet.create({
   },
 
   safeArea: {
-    flex: 1,
-  },
+  flex: 1,
+  paddingTop: Platform.OS === "android" ? StatusBar.currentHeight || 0 : 0,
+},
 
   container: {
-    flex: 1,
-    paddingHorizontal: 20,
-    paddingTop: 10,
-  },
+  flex: 1,
+  paddingHorizontal: 16,
+  paddingTop: 8,
+},
 
   heroCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 30,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 18,
+  backgroundColor: COLORS.card,
+  borderRadius: 28,
+  borderWidth: 1,
+  borderColor: COLORS.border,
+  padding: 14,
     marginBottom: 14,
     shadowColor: "#000",
     shadowOpacity: 0.08,

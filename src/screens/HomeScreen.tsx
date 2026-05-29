@@ -11,6 +11,7 @@ import {
   ScrollView,
   ImageBackground,
   SafeAreaView,
+  StatusBar,
 } from "react-native";
 import { Audio } from "expo-av";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -1343,13 +1344,14 @@ const styles = StyleSheet.create({
   },
 
   safeArea: {
-    flex: 1,
-  },
+  flex: 1,
+  paddingTop: Platform.OS === "android" ? StatusBar.currentHeight || 0 : 0,
+},
 
   container: {
     flex: 1,
-    paddingHorizontal: 20,
-    paddingTop: 10,
+    paddingHorizontal: 16,
+    paddingTop: 8,
   },
 
   scrollView: {
@@ -1399,12 +1401,12 @@ const styles = StyleSheet.create({
 
   heroCard: {
   backgroundColor: COLORS.card,
-  borderRadius: 30,
+  borderRadius: 28,
   borderWidth: 1,
   borderColor: COLORS.border,
-  paddingVertical: 28,
-  paddingHorizontal: 20,
-  marginBottom: 16,
+  paddingVertical: 22,
+  paddingHorizontal: 16,
+  marginBottom: 14,
   alignItems: "center",
   shadowColor: "#000",
   shadowOpacity: 0.08,
@@ -1424,7 +1426,7 @@ const styles = StyleSheet.create({
 
   micZone: {
   width: "100%",
-  minHeight: 235,
+  minHeight: 200,
   alignItems: "center",
   justifyContent: "center",
   marginBottom: 12,
@@ -1432,8 +1434,8 @@ const styles = StyleSheet.create({
 
   micHaloOuter: {
   position: "absolute",
-  width: 204,
-  height: 204,
+  width: 180,
+  height: 180,
   borderRadius: 999,
   backgroundColor: COLORS.primaryUltraSoft,
   borderWidth: 1,
@@ -1442,8 +1444,8 @@ const styles = StyleSheet.create({
 
   micHaloInner: {
   position: "absolute",
-  width: 166,
-  height: 166,
+  width: 145,
+  height: 145,
   borderRadius: 999,
   backgroundColor: "rgba(255,255,255,0.46)",
   borderWidth: 1,
@@ -1456,8 +1458,8 @@ const styles = StyleSheet.create({
   },
 
   micButton: {
-  width: 136,
-  height: 136,
+  width: 118,
+  height: 118,
   borderRadius: 999,
   backgroundColor: COLORS.primary,
   alignItems: "center",
